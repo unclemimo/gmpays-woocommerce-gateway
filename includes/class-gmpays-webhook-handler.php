@@ -1,8 +1,8 @@
 <?php
 /**
- * GMPays Webhook Handler Class
+ * GMPays Webhook Handler Class - Updated for RSA Authentication
  *
- * Handles webhook notifications from GMPays payment processor
+ * Handles webhook notifications from GMPays payment processor using RSA signatures
  *
  * @package GMPaysWooCommerceGateway
  */
@@ -17,6 +17,31 @@ if (!defined('ABSPATH')) {
  */
 class GMPays_Webhook_Handler {
     
+    /** @var string GMPays certificate for signature verification */
+    private static $gmpays_certificate = '-----BEGIN CERTIFICATE-----
+MIID3TCCAsWgAwIBAgIJANtAJ3UMiGLZMA0GCSqGSIb3DQEBCwUAMIGEMQswCQYD
+VQQGEwJDUjERMA8GA1UECAwIU2FuIEpvc2UxEjAQBgNVBAcMCVNhbnRhIEFuYTET
+MBEGA1UECgwKSUJTIFMuUi5MLjEeMBwGA1UEAwwVY2hlY2tpbi5nYW1lbW9uZXku
+Y29tMRkwFwYJKoZIhvcNAQkBFgpjZW9AaWJzLmNyMB4XDTE2MDkwNDA3MjY0OVoX
+DTI2MDkwNjA3MjY0OVowgYQxCzAJBgNVBAYTAkNSMREwDwYDVQQIDAhTYW4gSm9z
+ZTESMBAGA1UEBwwJU2FudGEgQW5hMRMwEQYDVQQKDApJQlMgUy5SLkwuMR4wHAYD
+VQQDDBVjaGVja2luLmdhbWVtb25leS5jb20xGTAXBgkqhkiG9w0BCQEWCmNlb0Bp
+YnMuY3IwggEiMA0GCSqGSIb3DQEBAQUAA4IBDwAwggEKAoIBAQDPK9ODW+BcqZ5P
+YlQWziyLzKImuE8EDn7XuE9ZDmpKiJxwDUKZHSQYH4QtHyx0qYAbIqIGrKemfTu1
+nvW9+O8yKLFLLcaXVaSLU7mpp8uSWasGbkLqE7xVLqxQZq1zrBSEPnKR1/dNxD83
+5pNzMLx7ki02t1J01MAj0FvQ3GemIAQU15m+w+9YKX8cUYEBm+h2KuY6uziLhJTM
+BAQRIXO3z4fkZhUi/0wpiy5Zxi2jbh07gab7me5dpxxwOs/Dt10S6J8qu+AAH0DE
+3diqQS4OcaCYJuIo/kJVxrn8TO2WKzSf2CBMWMzKtA2lOIMokC79gsrTFAasRM8j
+BQkvD5/TAgMBAAGjUDBOMB0GA1UdDgQWBBTqyL+faltohjM5faVuKxRUBCG25DAf
+BgNVHSMEGDAWgBTqyL+faltohjM5faVuKxRUBCG25DAMBgNVHRMEBTADAQH/MA0G
+CSqGSIb3DQEBCwUAA4IBAQBpnItyLrXE1RWdGE+xoJ2YEbjNtgEfzaypFPpVuMO0
+hvCV1rJJDS3zs/P1uSF0akqN4weSGOeFuFyGf3v2j40M1T1XdllOA8ucBv7Rfy2W
+l1rR2aU+Hd6rl0E/7lhtx3VUobgPVKZn8k7NMKkSMtF/f2cS9jI4i6gsJfFImMr9
+gWjEZAlmwQcnilZ6ZUhhn+0yHFbCoX8fETH/sZlofZOnN8EkETyqyfThIpTX41XH
+geivrSfScNQH1mWJuE0DXMobNrhyJpxHRJwXXQyck6TiDM8OETki4PBzjKk/Gsyc
+61gqP9VPE2AVVwKypWOJidMxMZ03n4+MlyTbz3mnBXL9
+-----END CERTIFICATE-----';
+    
     /**
      * Handle webhook request
      *
@@ -27,10 +52,9 @@ class GMPays_Webhook_Handler {
         $body = $request->get_body();
         $headers = $request->get_headers();
         
-        // Get gateway settings for debug mode and API credentials
+        // Get gateway settings for debug mode
         $gateway_settings = get_option('woocommerce_gmpays_credit_card_settings', array());
         $debug_mode = isset($gateway_settings['debug']) && $gateway_settings['debug'] === 'yes';
-        $testmode = isset($gateway_settings['testmode']) && $gateway_settings['testmode'] === 'yes';
         
         if ($debug_mode) {
             wc_get_logger()->debug('GMPays webhook received - Headers: ' . print_r($headers, true), array('source' => 'gmpays-webhook'));
@@ -52,8 +76,8 @@ class GMPays_Webhook_Handler {
                 wc_get_logger()->debug('GMPays webhook data parsed: ' . print_r($webhook_data, true), array('source' => 'gmpays-webhook'));
             }
             
-            // Verify webhook signature
-            if (!self::verify_webhook_signature($webhook_data, $gateway_settings, $testmode)) {
+            // Verify webhook signature using RSA
+            if (!self::verify_webhook_signature($webhook_data)) {
                 wc_get_logger()->error('GMPays webhook signature verification failed', array('source' => 'gmpays-webhook'));
                 return new WP_REST_Response(array('error' => 'Invalid signature'), 401);
             }
@@ -78,24 +102,12 @@ class GMPays_Webhook_Handler {
     }
     
     /**
-     * Verify webhook signature
+     * Verify webhook signature using RSA
      *
      * @param array $webhook_data Webhook data
-     * @param array $gateway_settings Gateway settings
-     * @param boolean $testmode Test mode flag
      * @return boolean True if signature is valid
      */
-    private static function verify_webhook_signature($webhook_data, $gateway_settings, $testmode) {
-        // Get HMAC key based on mode
-        $hmac_key = $testmode ? 
-            (isset($gateway_settings['test_hmac_key']) ? $gateway_settings['test_hmac_key'] : '') :
-            (isset($gateway_settings['live_hmac_key']) ? $gateway_settings['live_hmac_key'] : '');
-        
-        if (empty($hmac_key)) {
-            wc_get_logger()->warning('GMPays HMAC key not configured for webhook verification', array('source' => 'gmpays-webhook'));
-            return false;
-        }
-        
+    private static function verify_webhook_signature($webhook_data) {
         // Check if signature exists in webhook data
         if (!isset($webhook_data['signature'])) {
             wc_get_logger()->warning('GMPays webhook signature missing', array('source' => 'gmpays-webhook'));
@@ -104,28 +116,99 @@ class GMPays_Webhook_Handler {
         
         $received_signature = $webhook_data['signature'];
         
-        // Remove signature from data for verification
-        unset($webhook_data['signature']);
+        // Create a copy of data without signature for verification
+        $verify_data = $webhook_data;
+        unset($verify_data['signature']);
         
-        // Sort data by keys
-        ksort($webhook_data);
+        // Convert data to string according to GMPays specification
+        $string_to_verify = self::array_to_string($verify_data);
         
-        // Build signature string according to GMPays documentation
-        $signature_string = '';
-        foreach ($webhook_data as $key => $value) {
-            if (!is_array($value) && !is_object($value)) {
-                $signature_string .= $value . ':';
+        wc_get_logger()->debug('String to verify: ' . $string_to_verify, array('source' => 'gmpays-webhook'));
+        
+        // Get public key from GMPays certificate
+        $public_key = openssl_pkey_get_public(self::$gmpays_certificate);
+        if (!$public_key) {
+            wc_get_logger()->error('Failed to extract public key from certificate', array('source' => 'gmpays-webhook'));
+            return false;
+        }
+        
+        // Decode the signature from base64
+        $signature_binary = base64_decode($received_signature);
+        
+        // Verify signature using SHA256
+        $result = openssl_verify($string_to_verify, $signature_binary, $public_key, OPENSSL_ALGO_SHA256);
+        
+        if ($result === 1) {
+            wc_get_logger()->info('Webhook signature verified successfully', array('source' => 'gmpays-webhook'));
+            return true;
+        } elseif ($result === 0) {
+            wc_get_logger()->error('Webhook signature verification failed', array('source' => 'gmpays-webhook'));
+            return false;
+        } else {
+            wc_get_logger()->error('Error during signature verification: ' . openssl_error_string(), array('source' => 'gmpays-webhook'));
+            return false;
+        }
+    }
+    
+    /**
+     * Convert array to string for signature verification according to GMPays specification
+     *
+     * @param array $data Data to convert
+     * @return string Formatted string for signature
+     */
+    private static function array_to_string($data) {
+        // Sort by keys alphabetically
+        ksort($data);
+        
+        $result = '';
+        
+        foreach ($data as $key => $value) {
+            if (is_array($value)) {
+                // For arrays, process recursively
+                if (self::is_assoc($value)) {
+                    // Associative array
+                    $result .= $key . ':' . self::array_to_string_recursive($value) . ';';
+                } else {
+                    // Indexed array
+                    $result .= $key . ':';
+                    foreach ($value as $index => $item) {
+                        $result .= $index . ':' . $item . ';';
+                    }
+                    $result .= ';';
+                }
+            } else {
+                // For scalar values
+                $result .= $key . ':' . $value . ';';
             }
         }
         
-        // Add HMAC key at the end
-        $signature_string .= $hmac_key;
+        return $result;
+    }
+    
+    /**
+     * Recursive array to string conversion
+     */
+    private static function array_to_string_recursive($data) {
+        ksort($data);
+        $result = '';
         
-        // Generate MD5 hash (GMPays uses MD5 for signatures)
-        $expected_signature = md5($signature_string);
+        foreach ($data as $key => $value) {
+            if (is_array($value)) {
+                $result .= $key . ':' . self::array_to_string_recursive($value) . ';';
+            } else {
+                $result .= $key . ':' . $value . ';';
+            }
+        }
         
-        // Compare signatures
-        return hash_equals($expected_signature, $received_signature);
+        return $result;
+    }
+    
+    /**
+     * Check if array is associative
+     */
+    private static function is_assoc($arr) {
+        if (!is_array($arr)) return false;
+        return array_keys($arr) !== range(0, count($arr) - 1);
     }
     
     /**

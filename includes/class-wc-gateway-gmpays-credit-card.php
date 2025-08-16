@@ -1,8 +1,8 @@
 <?php
 /**
- * GMPays Credit Card Payment Gateway Class
+ * GMPays Credit Card Payment Gateway Class - Fixed for RSA
  *
- * Handles credit card payment processing through GMPays
+ * Handles credit card payment processing through GMPays with RSA signatures
  *
  * @package GMPaysWooCommerceGateway
  */
@@ -24,7 +24,10 @@ class WC_Gateway_GMPays_Credit_Card extends WC_Payment_Gateway {
     private $currency_manager;
     
     /** @var string */
-    private $webhook_secret;
+    private $api_url;
+    
+    /** @var string */
+    private $private_key;
     
     /**
      * Constructor
@@ -33,8 +36,8 @@ class WC_Gateway_GMPays_Credit_Card extends WC_Payment_Gateway {
         $this->id                 = 'gmpays_credit_card';
         $this->icon               = apply_filters('woocommerce_gmpays_credit_card_icon', GMPAYS_WC_GATEWAY_PLUGIN_URL . 'assets/images/credit-cards.png');
         $this->has_fields         = false;
-        $this->method_title       = __('Credit Card', 'gmpays-woocommerce-gateway');
-        $this->method_description = __('Accept international credit card payments via GMPays payment processor.', 'gmpays-woocommerce-gateway');
+        $this->method_title       = __('GMPays Credit Card', 'gmpays-woocommerce-gateway');
+        $this->method_description = __('Accept international credit card payments via GMPays payment processor using RSA signatures.', 'gmpays-woocommerce-gateway');
         $this->supports           = array(
             'products',
             'refunds',
@@ -48,12 +51,15 @@ class WC_Gateway_GMPays_Credit_Card extends WC_Payment_Gateway {
         $this->title              = $this->get_option('title', __('Credit Card', 'gmpays-woocommerce-gateway'));
         $this->description        = $this->get_option('description', __('Pay securely with your credit card', 'gmpays-woocommerce-gateway'));
         $this->enabled            = $this->get_option('enabled');
+        $this->api_url            = $this->get_option('api_url', 'https://paygate.gamemoney.com');
         $this->project_id         = $this->get_option('project_id');
-        $this->hmac_key           = $this->get_option('hmac_key');
-        $this->webhook_secret     = $this->get_option('webhook_secret', $this->hmac_key); // Use HMAC key as default for webhooks
+        $this->private_key        = $this->get_option('private_key');
         
-        // Initialize API client and currency manager
-        $this->api_client = new GMPays_API_Client($this->project_id, $this->hmac_key);
+        // Initialize API client with RSA private key and API URL
+        if (!empty($this->project_id) && !empty($this->private_key)) {
+            $this->api_client = new GMPays_API_Client($this->project_id, $this->private_key, $this->api_url);
+        }
+        
         $this->currency_manager = new GMPays_Currency_Manager();
         
         // Hooks
@@ -90,6 +96,14 @@ class WC_Gateway_GMPays_Credit_Card extends WC_Payment_Gateway {
                 'default'     => __('Pay securely using your credit card through GMPays secure payment gateway.', 'gmpays-woocommerce-gateway'),
                 'desc_tip'    => true,
             ),
+            'api_url' => array(
+                'title'       => __('API URL', 'gmpays-woocommerce-gateway'),
+                'type'        => 'text',
+                'description' => __('GMPays API URL from your control panel (e.g., https://paygate.gamemoney.com)', 'gmpays-woocommerce-gateway'),
+                'default'     => 'https://paygate.gamemoney.com',
+                'desc_tip'    => true,
+                'placeholder' => 'https://paygate.gamemoney.com',
+            ),
             'project_id' => array(
                 'title'       => __('Project ID', 'gmpays-woocommerce-gateway'),
                 'type'        => 'text',
@@ -98,46 +112,47 @@ class WC_Gateway_GMPays_Credit_Card extends WC_Payment_Gateway {
                 'desc_tip'    => true,
                 'placeholder' => '603',
             ),
-            'hmac_key' => array(
-                'title'       => __('HMAC Key', 'gmpays-woocommerce-gateway'),
-                'type'        => 'password',
-                'description' => __('Your GMPays HMAC Key. Generate this by clicking "Regenerate HMAC Key" in your GMPays control panel.', 'gmpays-woocommerce-gateway'),
+            'private_key' => array(
+                'title'       => __('RSA Private Key', 'gmpays-woocommerce-gateway'),
+                'type'        => 'textarea',
+                'description' => __('Your RSA Private Key (PEM format). Include the full key with BEGIN and END lines. Keep this secure!', 'gmpays-woocommerce-gateway'),
                 'default'     => '',
-                'desc_tip'    => true,
-                'placeholder' => '',
+                'desc_tip'    => false,
+                'placeholder' => "-----BEGIN RSA PRIVATE KEY-----\n...\n-----END RSA PRIVATE KEY-----",
+                'custom_attributes' => array(
+                    'rows' => 10,
+                    'style' => 'font-family: monospace; width: 100%;'
+                ),
             ),
-            'webhook_secret' => array(
-                'title'       => __('Webhook Secret (Optional)', 'gmpays-woocommerce-gateway'),
-                'type'        => 'password',
-                'description' => __('If you want to use a different secret for webhook verification than your HMAC key, enter it here. Otherwise, leave blank to use HMAC key.', 'gmpays-woocommerce-gateway'),
-                'default'     => '',
-                'desc_tip'    => true,
-            ),
-            'test_mode' => array(
-                'title'       => __('Test Mode', 'gmpays-woocommerce-gateway'),
-                'type'        => 'checkbox',
-                'label'       => __('Enable Test Mode (Note: GMPays does not have a sandbox environment)', 'gmpays-woocommerce-gateway'),
-                'description' => __('This is for compatibility only. GMPays processes all transactions in production mode.', 'gmpays-woocommerce-gateway'),
-                'default'     => 'no',
-                'desc_tip'    => true,
+            'key_generation_instructions' => array(
+                'title'       => __('RSA Key Setup Instructions', 'gmpays-woocommerce-gateway'),
+                'type'        => 'title',
+                'description' => '<div style="background: #f0f0f0; padding: 15px; border-radius: 5px; margin: 10px 0;">
+                    <h4 style="margin-top: 0;">How to Generate RSA Keys:</h4>
+                    <ol>
+                        <li><strong>Generate Private Key:</strong><br>
+                        <code>openssl genrsa -out private_key.pem 2048</code></li>
+                        <li><strong>Extract Public Key:</strong><br>
+                        <code>openssl rsa -in private_key.pem -pubout -out public_key.pem</code></li>
+                        <li><strong>Upload Public Key to GMPays:</strong><br>
+                        Go to <a href="https://cp.gmpays.com/project/sign" target="_blank">GMPays Signatures page</a> and paste your public key</li>
+                        <li><strong>Paste Private Key Above:</strong><br>
+                        Copy the entire content of private_key.pem (including BEGIN/END lines) to the field above</li>
+                    </ol>
+                    <p style="color: #d9534f; margin-bottom: 0;"><strong>⚠️ Security Note:</strong> Never share your private key. Keep it secure!</p>
+                </div>',
             ),
             'webhook_configuration' => array(
                 'title'       => __('Webhook Configuration', 'gmpays-woocommerce-gateway'),
                 'type'        => 'title',
                 'description' => sprintf(
-                    __('Configure this webhook URL in your GMPays account: %s', 'gmpays-woocommerce-gateway'),
-                    '<br><code>' . home_url('/wp-json/gmpays/v1/webhook') . '</code>'
-                ),
-            ),
-            'payment_action' => array(
-                'title'       => __('Payment Action', 'gmpays-woocommerce-gateway'),
-                'type'        => 'select',
-                'description' => __('Choose whether to capture payment immediately or authorize only.', 'gmpays-woocommerce-gateway'),
-                'default'     => 'sale',
-                'desc_tip'    => true,
-                'options'     => array(
-                    'sale' => __('Capture (Sale)', 'gmpays-woocommerce-gateway'),
-                    'auth' => __('Authorize Only', 'gmpays-woocommerce-gateway'),
+                    __('Configure these URLs in your GMPays control panel:', 'gmpays-woocommerce-gateway') . 
+                    '<br><strong>Notification URL (URL для оповещений о выплатах):</strong> <code>%s</code>' .
+                    '<br><strong>Success URL (URL перенаправления пользователя в случае успешной оплаты):</strong> <code>%s</code>' .
+                    '<br><strong>Failure URL (URL перенаправления пользователя в случае неуспешной оплаты):</strong> <code>%s</code>',
+                    home_url('/wp-json/gmpays/v1/webhook'),
+                    wc_get_checkout_url() . 'order-received/',
+                    wc_get_checkout_url()
                 ),
             ),
             'debug' => array(
@@ -148,6 +163,30 @@ class WC_Gateway_GMPays_Credit_Card extends WC_Payment_Gateway {
                 'description' => sprintf(__('Log GMPays events, such as API requests, inside %s', 'gmpays-woocommerce-gateway'), '<code>' . WC_Log_Handler_File::get_log_file_path('gmpays-gateway') . '</code>'),
             ),
         );
+    }
+    
+    /**
+     * Validate private key field
+     */
+    public function validate_private_key_field($key, $value) {
+        if (empty($value)) {
+            return '';
+        }
+        
+        // Check if it looks like a valid PEM private key
+        if (strpos($value, '-----BEGIN') === false || strpos($value, '-----END') === false) {
+            WC_Admin_Settings::add_error(__('Invalid private key format. Please include the full PEM formatted key with BEGIN and END lines.', 'gmpays-woocommerce-gateway'));
+            return '';
+        }
+        
+        // Test if the private key can be parsed
+        $test_key = openssl_pkey_get_private($value);
+        if (!$test_key) {
+            WC_Admin_Settings::add_error(__('Invalid private key. Please check your key format.', 'gmpays-woocommerce-gateway'));
+            return '';
+        }
+        
+        return $value;
     }
     
     /**
@@ -166,48 +205,12 @@ class WC_Gateway_GMPays_Credit_Card extends WC_Payment_Gateway {
     }
     
     /**
-     * Check if this gateway is in test mode
-     * 
-     * @return bool
-     */
-    public function is_test_mode() {
-        return 'yes' === $this->get_option('test_mode', 'no');
-    }
-    
-    /**
-     * Check if this gateway is in test mode (alternative method)
-     * 
-     * @return bool
-     */
-    public function is_in_test_mode() {
-        return $this->is_test_mode();
-    }
-    
-    /**
      * Check if this gateway is properly configured
      * 
      * @return bool
      */
     public function is_configured() {
-        return !empty($this->project_id) && !empty($this->hmac_key);
-    }
-    
-    /**
-     * Check if this gateway is connected (WooCommerce compatibility)
-     * 
-     * @return bool
-     */
-    public function is_connected() {
-        return $this->is_configured();
-    }
-    
-    /**
-     * Check if this gateway account is connected (WooCommerce compatibility)
-     * 
-     * @return bool
-     */
-    public function is_account_connected() {
-        return $this->is_configured();
+        return !empty($this->project_id) && !empty($this->private_key);
     }
     
     /**
@@ -257,6 +260,11 @@ class WC_Gateway_GMPays_Credit_Card extends WC_Payment_Gateway {
         }
         
         try {
+            // Check if API client is initialized
+            if (!$this->api_client) {
+                throw new Exception(__('Payment gateway not properly configured. Please contact the store administrator.', 'gmpays-woocommerce-gateway'));
+            }
+            
             // Prepare order data
             $order_data = $this->prepare_order_data($order);
             
@@ -272,7 +280,7 @@ class WC_Gateway_GMPays_Credit_Card extends WC_Payment_Gateway {
             }
             
             if (!$response || !isset($response['invoice_id']) || !isset($response['payment_url'])) {
-                throw new Exception(__('Unable to create payment session with GMPays. Please check your API credentials.', 'gmpays-woocommerce-gateway'));
+                throw new Exception(__('Unable to create payment session. Please try again or contact support.', 'gmpays-woocommerce-gateway'));
             }
             
             // Save GMPays invoice data to order
@@ -343,22 +351,8 @@ class WC_Gateway_GMPays_Credit_Card extends WC_Payment_Gateway {
             return new WP_Error('no_invoice', __('No GMPays invoice found for this order', 'gmpays-woocommerce-gateway'));
         }
         
-        try {
-            $response = $this->api_client->refund_payment($invoice_id, $amount, $reason);
-            
-            if ($response && isset($response['success']) && $response['success']) {
-                $order->add_order_note(sprintf(
-                    __('Refunded %s via GMPays. Reason: %s', 'gmpays-woocommerce-gateway'),
-                    wc_price($amount),
-                    $reason ?: __('No reason provided', 'gmpays-woocommerce-gateway')
-                ));
-                return true;
-            } else {
-                return new WP_Error('refund_failed', __('Refund failed. Please try again or contact support.', 'gmpays-woocommerce-gateway'));
-            }
-        } catch (Exception $e) {
-            return new WP_Error('refund_error', $e->getMessage());
-        }
+        // Note: GMPays refund API needs to be implemented when available
+        return new WP_Error('not_implemented', __('Refunds must be processed manually through GMPays control panel', 'gmpays-woocommerce-gateway'));
     }
     
     /**
@@ -377,11 +371,11 @@ class WC_Gateway_GMPays_Credit_Card extends WC_Payment_Gateway {
         $customer_name = $order->get_billing_first_name() . ' ' . $order->get_billing_last_name();
         $customer_email = $order->get_billing_email();
         
-        // Prepare invoice data for GMPays API - matching the expected field names
+        // Prepare invoice data for GMPays API
         $invoice_data = array(
-            'amount' => number_format($order_total_usd, 2, '.', ''),
+            'amount' => $order_total_usd,
             'currency' => 'USD',
-            'order_id' => strval($order->get_id()),
+            'order_id' => $order->get_id(),
             'description' => $this->get_order_description($order),
             'customer_email' => $customer_email,
             'customer_name' => trim($customer_name),
@@ -389,20 +383,7 @@ class WC_Gateway_GMPays_Credit_Card extends WC_Payment_Gateway {
             'return_url' => $this->get_return_url($order),
             'cancel_url' => wc_get_checkout_url(),
             'webhook_url' => home_url('/wp-json/gmpays/v1/webhook'),
-            'payment_method' => 'card', // GMPays expects 'card' not 'credit_card'
         );
-        
-        // Add customer phone if available
-        $phone = $order->get_billing_phone();
-        if (!empty($phone)) {
-            $invoice_data['customer_phone'] = $phone;
-        }
-        
-        // Add billing address if available
-        $billing_country = $order->get_billing_country();
-        if (!empty($billing_country)) {
-            $invoice_data['customer_country'] = $billing_country;
-        }
         
         return apply_filters('gmpays_invoice_data', $invoice_data, $order);
     }
@@ -431,7 +412,7 @@ class WC_Gateway_GMPays_Credit_Card extends WC_Payment_Gateway {
             $description .= ': ' . $items_text;
         }
         
-        // GMPays might have a character limit for descriptions
+        // GMPays has a 255 character limit for descriptions
         if (strlen($description) > 255) {
             $description = substr($description, 0, 252) . '...';
         }
@@ -479,11 +460,21 @@ class WC_Gateway_GMPays_Credit_Card extends WC_Payment_Gateway {
         
         $invoice_id = $order->get_meta('_gmpays_invoice_id');
         $payment_url = $order->get_meta('_gmpays_payment_url');
+        $transaction_id = $order->get_meta('_gmpays_transaction_id');
+        $payment_status = $order->get_meta('_gmpays_payment_status');
         
         echo '<div class="gmpays-payment-meta-box">';
         
         if ($invoice_id) {
             echo '<p><strong>' . __('Invoice ID:', 'gmpays-woocommerce-gateway') . '</strong><br>' . esc_html($invoice_id) . '</p>';
+        }
+        
+        if ($transaction_id) {
+            echo '<p><strong>' . __('Transaction ID:', 'gmpays-woocommerce-gateway') . '</strong><br>' . esc_html($transaction_id) . '</p>';
+        }
+        
+        if ($payment_status) {
+            echo '<p><strong>' . __('Payment Status:', 'gmpays-woocommerce-gateway') . '</strong><br>' . esc_html($payment_status) . '</p>';
         }
         
         if ($payment_url) {
@@ -492,21 +483,52 @@ class WC_Gateway_GMPays_Credit_Card extends WC_Payment_Gateway {
         }
         
         // Add button to check payment status
-        if ($invoice_id) {
-            echo '<p><button type="button" class="button" onclick="checkGMPaysPaymentStatus(\'' . esc_attr($invoice_id) . '\')">';
+        if ($invoice_id && $this->api_client) {
+            echo '<p><button type="button" class="button" id="gmpays-check-status" data-invoice="' . esc_attr($invoice_id) . '" data-order="' . esc_attr($order->get_id()) . '">';
             echo __('Check Payment Status', 'gmpays-woocommerce-gateway') . '</button></p>';
+            echo '<div id="gmpays-status-result"></div>';
+            
+            ?>
+            <script type="text/javascript">
+            jQuery(document).ready(function($) {
+                $('#gmpays-check-status').on('click', function() {
+                    var button = $(this);
+                    var invoiceId = button.data('invoice');
+                    var orderId = button.data('order');
+                    var resultDiv = $('#gmpays-status-result');
+                    
+                    button.prop('disabled', true);
+                    resultDiv.html('<p><?php echo esc_js(__('Checking status...', 'gmpays-woocommerce-gateway')); ?></p>');
+                    
+                    $.ajax({
+                        url: ajaxurl,
+                        type: 'POST',
+                        data: {
+                            action: 'gmpays_check_status',
+                            invoice_id: invoiceId,
+                            order_id: orderId,
+                            nonce: '<?php echo wp_create_nonce('gmpays_check_status'); ?>'
+                        },
+                        success: function(response) {
+                            if (response.success) {
+                                resultDiv.html('<p style="color: green;">' + response.data.message + '</p>');
+                            } else {
+                                resultDiv.html('<p style="color: red;">' + response.data + '</p>');
+                            }
+                        },
+                        error: function() {
+                            resultDiv.html('<p style="color: red;"><?php echo esc_js(__('Error checking status', 'gmpays-woocommerce-gateway')); ?></p>');
+                        },
+                        complete: function() {
+                            button.prop('disabled', false);
+                        }
+                    });
+                });
+            });
+            </script>
+            <?php
         }
         
         echo '</div>';
-        
-        // Add JavaScript for status check
-        ?>
-        <script type="text/javascript">
-        function checkGMPaysPaymentStatus(invoiceId) {
-            alert('Checking status for invoice: ' + invoiceId);
-            // TODO: Implement AJAX call to check status
-        }
-        </script>
-        <?php
     }
 }

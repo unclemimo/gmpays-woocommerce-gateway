@@ -1,18 +1,18 @@
 # GMPays WooCommerce Payment Gateway
 
-![Version](https://img.shields.io/badge/version-1.1.0-blue.svg)
+![Version](https://img.shields.io/badge/version-1.2.0-blue.svg)
 ![WooCommerce](https://img.shields.io/badge/WooCommerce-4.0%2B-purple.svg)
 ![WordPress](https://img.shields.io/badge/WordPress-5.0%2B-blue.svg)
-![PHP](https://img.shields.io/badge/PHP-7.2%2B-777BB4.svg)
+![PHP](https://img.shields.io/badge/PHP-7.4%2B-777BB4.svg)
 
-A robust WooCommerce payment gateway plugin for processing international credit card payments through GMPays payment processor, specifically designed for Latin American e-commerce.
+A robust WooCommerce payment gateway plugin for processing international credit card payments through GMPays payment processor using RSA signatures, specifically designed for Latin American e-commerce.
 
 ## 🌟 Features
 
 - ✅ **International Credit Card Processing** - Accept Visa, MasterCard, American Express, and more
 - 💱 **Multi-Currency Support** - Automatic currency conversion to USD using WooCommerce Multi Currency plugin
 - 🌍 **Localization Ready** - Spanish and English translations included
-- 🔒 **Secure Webhooks** - HMAC signature verification for payment notifications
+- 🔒 **Secure RSA Signatures** - RSA signature verification for payment notifications and API requests
 - 📊 **Comprehensive Logging** - Detailed debug logs for troubleshooting
 - 🎨 **Modern Architecture** - Modular design for easy extension with additional payment methods
 
@@ -20,7 +20,7 @@ A robust WooCommerce payment gateway plugin for processing international credit 
 
 - WordPress 5.0 or higher
 - WooCommerce 4.0 or higher
-- PHP 7.2 or higher
+- PHP 7.4 or higher
 - [WooCommerce Multi Currency](https://wordpress.org/plugins/woocommerce-multi-currency/) plugin (recommended for non-USD stores)
 - GMPays merchant account
 
@@ -45,24 +45,43 @@ A robust WooCommerce payment gateway plugin for processing international credit 
 
 ## ⚙️ Configuration
 
-### 1. Obtain GMPays Credentials
+### 1. Generate RSA Keys
 
-1. Log in to your GMPays control panel at [cp.gmpays.com](https://cp.gmpays.com)
-2. Note your **Project ID** (shown as "ID IN PROJECT")
-3. Generate or regenerate your **HMAC Key** using the button in the control panel
+**Important**: This plugin now uses RSA signatures instead of HMAC. You need to generate RSA keys:
 
-### 2. Configure Plugin Settings
+1. **Run the setup script** (included in the plugin):
+   ```bash
+   cd wp-content/plugins/gmpays-woocommerce-gateway/
+   chmod +x setup-gmpays.sh
+   ./setup-gmpays.sh
+   ```
+
+2. **The script will generate**:
+   - `private_key.pem` - Your private key (keep secure!)
+   - `public_key.pem` - Your public key (upload to GMPays)
+
+### 2. Configure GMPays Control Panel
+
+1. **Log in to GMPays**: [cp.gmpays.com](https://cp.gmpays.com)
+2. **Go to Signatures page**: [cp.gmpays.com/project/sign](https://cp.gmpays.com/project/sign)
+3. **Upload your public key**:
+   - Copy the entire content of `public_key.pem` (including BEGIN/END lines)
+   - Paste it in the "Public key" field
+   - Click "Generate signature HMAC" to regenerate the HMAC key
+4. **Note your Project ID** (shown as "ID IN PROJECT", e.g., `603`)
+
+### 3. Configure Plugin Settings
 
 1. Navigate to **WooCommerce → Settings → Payments**
 2. Find **Credit Card (GMPays)** and click **Manage**
 3. Configure the following:
 
 #### API Credentials
+- **API URL**: Your GMPays API URL (usually `https://paygate.gamemoney.com`)
 - **Project ID**: Your GMPays Project ID (e.g., `603`)
-- **HMAC Key**: Your GMPays HMAC Key from the control panel
-- **Webhook Secret** (Optional): Leave blank to use HMAC key for webhook verification
+- **RSA Private Key**: Copy the entire content of `private_key.pem` (including BEGIN/END lines)
 
-### 3. Configure GMPays Webhook URLs
+### 4. Configure GMPays Webhook URLs
 
 In your GMPays control panel, configure these URLs:
 
@@ -81,7 +100,7 @@ In your GMPays control panel, configure these URLs:
   https://yourdomain.com/wp-json/gmpays/v1/webhook
   ```
 
-### 4. Currency Configuration
+### 5. Currency Configuration
 
 For non-USD stores, install and configure [WooCommerce Multi Currency](https://docs.villatheme.com/?item=woocommerce-multi-currency) plugin to enable automatic currency conversion to USD.
 
@@ -116,10 +135,10 @@ The plugin seamlessly integrates with WooCommerce Multi Currency plugin:
 
 ## 🔐 Security Features
 
-- **HMAC Signature Verification**: All webhooks are verified using HMAC-SHA256 signatures
+- **RSA Signature Verification**: All webhooks and API requests use RSA-SHA256 signatures
 - **SSL/TLS Required**: Enforces secure connections
 - **PCI Compliance**: Payment card data is handled by GMPays's PCI-compliant infrastructure
-- **Secure API Communication**: All API calls use HTTPS with authentication
+- **Secure API Communication**: All API calls use HTTPS with RSA authentication
 
 ## 📝 Order Management
 
@@ -157,13 +176,19 @@ The plugin includes translations for:
 
 #### Gateway Not Appearing at Checkout
 - Ensure plugin is activated
-- Verify Project ID and HMAC Key are configured
+- Verify Project ID and RSA Private Key are configured
 - Check that WooCommerce Multi Currency is installed (if using non-USD currency)
 
 #### Payment Failures
 - Verify webhook URLs are correctly configured in GMPays control panel
 - Check debug logs for specific error messages
 - Ensure SSL certificate is valid
+- Verify RSA keys are properly generated and uploaded
+
+#### RSA Key Issues
+- Ensure private key is in correct PEM format (includes BEGIN/END lines)
+- Verify public key was uploaded to GMPays Signatures page
+- Check that HMAC key was regenerated after uploading public key
 
 #### Currency Conversion Issues
 - Install WooCommerce Multi Currency plugin
@@ -177,14 +202,16 @@ The plugin handles the following webhook events from GMPays:
 - Payment failure notifications
 - Payment status updates
 
+All webhooks are verified using RSA signatures for security.
+
 ## 📦 Plugin Structure
 
 ```
 gmpays-woocommerce-gateway/
 ├── includes/
 │   ├── class-wc-gateway-gmpays-credit-card.php  # Main gateway class
-│   ├── class-gmpays-api-client.php              # GMPays API wrapper
-│   ├── class-gmpays-webhook-handler.php         # Webhook processing
+│   ├── class-gmpays-api-client.php              # GMPays API wrapper with RSA
+│   ├── class-gmpays-webhook-handler.php         # Webhook processing with RSA
 │   ├── class-gmpays-currency-manager.php        # Currency conversion
 │   ├── class-gmpays-activator.php               # Plugin activation
 │   └── class-gmpays-deactivator.php             # Plugin deactivation
@@ -193,6 +220,7 @@ gmpays-woocommerce-gateway/
 │       └── gmpays-checkout.js                   # Frontend JavaScript
 ├── languages/                                    # Translation files
 ├── vendor/                                       # Composer dependencies
+├── setup-gmpays.sh                              # RSA key generation script
 └── gmpays-woocommerce-gateway.php              # Main plugin file
 ```
 
@@ -225,7 +253,15 @@ For issues or questions:
 
 ## 🏷️ Version History
 
-### v1.1.0 (Latest)
+### v1.2.0 (Latest) - RSA Authentication Update
+- **BREAKING CHANGE**: Switched from HMAC to RSA signatures for enhanced security
+- Updated API client to use RSA-SHA256 signatures
+- Updated webhook handler to verify RSA signatures
+- Added RSA key generation script (`setup-gmpays.sh`)
+- Improved security with proper certificate verification
+- Better error handling and logging for RSA operations
+
+### v1.1.0
 - Updated authentication to use Project ID and HMAC Key only
 - Removed sandbox mode (not available in GMPays)
 - Improved webhook configuration instructions
