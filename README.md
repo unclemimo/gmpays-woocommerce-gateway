@@ -1,6 +1,6 @@
 # GMPays WooCommerce Payment Gateway
 
-![Version](https://img.shields.io/badge/version-1.2.0-blue.svg)
+![Version](https://img.shields.io/badge/version-1.2.1-blue.svg)
 ![WooCommerce](https://img.shields.io/badge/WooCommerce-4.0%2B-purple.svg)
 ![WordPress](https://img.shields.io/badge/WordPress-5.0%2B-blue.svg)
 ![PHP](https://img.shields.io/badge/PHP-7.4%2B-777BB4.svg)
@@ -87,12 +87,12 @@ In your GMPays control panel, configure these URLs:
 
 - **Success URL (URL перенаправления пользователя в случае успешной оплаты)**:
   ```
-  https://yourdomain.com/checkout/order-received/
+  https://elgrupito.com/order-received/order-received/
   ```
 
 - **Failure URL (URL перенаправления пользователя в случае неуспешной оплаты)**:
   ```
-  https://yourdomain.com/checkout/
+  https://elgrupito.com/checkout/
   ```
 
 - **Notification URL (URL для оповещений о выплатах)**:

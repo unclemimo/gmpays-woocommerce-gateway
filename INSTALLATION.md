@@ -124,23 +124,23 @@ In your GMPays control panel, locate:
 
 ### Step 3: Configure Webhook URLs
 
-In the GMPays control panel, configure these URLs (replace `yourdomain.com` with your actual domain):
+In the GMPays control panel, configure these URLs:
 
 #### Success URL
 ```
-https://yourdomain.com/checkout/order-received/
+https://elgrupito.com/order-received/order-received/
 ```
 *URL перенаправления пользователя в случае успешной оплаты*
 
 #### Failure URL
 ```
-https://yourdomain.com/checkout/
+https://elgrupito.com/checkout/
 ```
 *URL перенаправления пользователя в случае неуспешной оплаты*
 
 #### Notification URL (Webhook)
 ```
-https://yourdomain.com/wp-json/gmpays/v1/webhook
+https://elgrupito.com/wp-json/gmpays/v1/webhook
 ```
 *URL для оповещений о выплатах*
 
@@ -238,7 +238,7 @@ GMPays processes all payments in production mode. To test:
 **Orders Not Updating Automatically:**
 1. Verify webhook URL in GMPays control panel:
    ```
-   https://yourdomain.com/wp-json/gmpays/v1/webhook
+   https://elgrupito.com/wp-json/gmpays/v1/webhook
    ```
 2. Check SSL certificate is valid
 3. Review webhook logs in debug mode

@@ -3,7 +3,7 @@
  * Plugin Name: GMPays WooCommerce Payment Gateway
  * Plugin URI: https://elgrupito.com/
  * Description: Accept credit card payments via GMPays - International payment processor with support for multiple currencies and local payment methods.
- * Version: 1.2.0
+ * Version: 1.2.1
  * Author: ElGrupito Development Team
  * Author URI: https://elgrupito.com/
  * Text Domain: gmpays-woocommerce-gateway
@@ -22,7 +22,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Define plugin constants
-define('GMPAYS_WC_GATEWAY_VERSION', '1.2.0');
+define('GMPAYS_WC_GATEWAY_VERSION', '1.2.1');
 define('GMPAYS_WC_GATEWAY_PLUGIN_FILE', __FILE__);
 define('GMPAYS_WC_GATEWAY_PLUGIN_PATH', plugin_dir_path(__FILE__));
 define('GMPAYS_WC_GATEWAY_PLUGIN_URL', plugin_dir_url(__FILE__));

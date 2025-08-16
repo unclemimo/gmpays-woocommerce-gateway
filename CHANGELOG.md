@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.1] - 2024-12-19
+
+### 🔧 Changed
+- Updated URLs to use elgrupito.com domain
+- Success URL: `https://elgrupito.com/order-received/order-received/`
+- Failure URL: `https://elgrupito.com/checkout/`
+- Notification URL: `https://elgrupito.com/wp-json/gmpays/v1/webhook`
+
+### 🔒 Security
+- Added `.gitignore` to exclude private keys and sensitive files
+- Enhanced security by preventing accidental commit of cryptographic keys
+
+### 📦 Release
+- Included all Composer dependencies in release ZIP
+- No need to run `composer install` on server
+- Plugin ready to use immediately after installation
+
 ## [1.2.0] - 2024-12-19
 
 ### 🚨 BREAKING CHANGES
