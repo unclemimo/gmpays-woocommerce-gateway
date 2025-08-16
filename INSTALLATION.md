@@ -108,10 +108,11 @@ During initial setup, enable debug logging:
 1. Log in to [cp.gmpays.com](https://cp.gmpays.com)
 2. Navigate to your project settings
 
-### Step 2: Obtain Your Credentials
+### Step 2: Choose Your Authentication Method
 
-In your GMPays control panel, locate:
+GMPays supports two authentication methods. Choose one based on your preference:
 
+#### Option A: HMAC Authentication (Recommended for simplicity)
 1. **Project ID**
    - Found under "ID IN PROJECT"
    - Example: `603`
@@ -121,6 +122,18 @@ In your GMPays control panel, locate:
    - Click "Regenerate HMAC Key" button to generate
    - Copy the generated key
    - Keep this secure - it's used for signature verification
+
+#### Option B: RSA Authentication (Enhanced security)
+1. **Project ID**
+   - Found under "ID IN PROJECT"
+   - Example: `603`
+   - This is your unique project identifier
+
+2. **RSA Keys**
+   - Generate private key: `openssl genrsa -out private_key.pem 2048`
+   - Extract public key: `openssl rsa -in private_key.pem -pubout -out public_key.pem`
+   - Upload public key to [GMPays Signatures page](https://cp.gmpays.com/project/sign)
+   - Keep private key secure - never share it
 
 ### Step 3: Configure Webhook URLs
 
@@ -149,9 +162,10 @@ https://elgrupito.com/wp-json/gmpays/v1/webhook
 Back in WooCommerce GMPays settings:
 
 1. **Project ID**: Enter your GMPays Project ID (e.g., `603`)
-2. **HMAC Key**: Enter your GMPays HMAC Key
-3. **Webhook Secret**: Leave blank (uses HMAC Key by default)
-4. Click **Save changes**
+2. **Authentication Method**: Choose either "HMAC" or "RSA"
+3. **HMAC Key**: If using HMAC, paste your HMAC key from GMPays
+4. **RSA Private Key**: If using RSA, paste your entire private key (including BEGIN/END lines)
+5. Click **Save changes**
 
 ## Multi-Currency Setup
 
@@ -225,13 +239,23 @@ GMPays processes all payments in production mode. To test:
 
 **Error: "Payment gateway configuration error"**
 - Verify Project ID is correct
-- Regenerate and update HMAC Key
+- Check that you've selected the correct Authentication Method
+- For HMAC: Ensure HMAC Key is entered correctly
+- For RSA: Regenerate and update RSA keys, ensure private key is complete
 - Check debug logs for specific errors
 
 **Error: "Currency not supported"**
 - Install WooCommerce Multi Currency plugin
 - Ensure USD is enabled
 - Check currency conversion settings
+
+**Error: "Failed to create payment session: Unknown error"**
+- Verify Project ID is correct
+- Check Authentication Method selection
+- For HMAC: Ensure HMAC Key is properly configured
+- For RSA: Ensure RSA private key is complete and valid
+- Enable debug logging to see detailed error messages
+- Check that the selected authentication method matches your GMPays configuration
 
 ### Webhook Issues
 
@@ -245,9 +269,11 @@ GMPays processes all payments in production mode. To test:
 4. Ensure WordPress REST API is enabled
 
 **Signature Verification Failures:**
-- Regenerate HMAC Key in GMPays
-- Update key in WooCommerce settings
+- **For HMAC**: Regenerate HMAC Key in GMPays and update in WooCommerce settings
+- **For RSA**: Regenerate RSA keys in GMPays and update in WooCommerce settings
 - Ensure no extra spaces in credentials
+- Verify that the authentication method in WooCommerce matches your GMPays configuration
+- Check that webhook URLs are correctly configured
 
 ### Debug Information
 
@@ -265,8 +291,11 @@ Enable debug logging to troubleshoot:
 
 3. **Common Log Entries**
    - `SDK initialized successfully` - Good connection
-   - `Missing required credentials` - Check Project ID/HMAC Key
-   - `Signature verification failed` - HMAC Key mismatch
+   - `Authentication Method: hmac/rsa` - Shows which method is being used
+   - `Missing required credentials` - Check Project ID and authentication keys
+   - `HMAC signature verified successfully` - HMAC webhook verification working
+   - `RSA webhook signature verified successfully` - RSA webhook verification working
+   - `Signature verification failed` - Authentication key mismatch
    - `Invoice created successfully` - Payment initiated
 
 ## Security Best Practices

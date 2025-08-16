@@ -24,6 +24,12 @@ class GMPays_API_Client {
     private $private_key_content;
     
     /** @var string */
+    private $hmac_key;
+    
+    /** @var string */
+    private $auth_method;
+    
+    /** @var string */
     private $gmpays_certificate;
     
     /** @var bool */
@@ -36,12 +42,19 @@ class GMPays_API_Client {
      * Constructor
      * 
      * @param int|string $project_id GMPays Project ID (e.g., 603)
-     * @param string $private_key Private key content
+     * @param string $key HMAC key or RSA private key content
      * @param string $api_url API base URL from GMPays settings
+     * @param string $auth_method Authentication method: 'hmac' or 'rsa'
      */
-    public function __construct($project_id, $private_key, $api_url = null) {
+    public function __construct($project_id, $key, $api_url = null, $auth_method = 'hmac') {
         $this->project_id = intval($project_id);
-        $this->private_key_content = $private_key;
+        $this->auth_method = $auth_method;
+        
+        if ($auth_method === 'hmac') {
+            $this->hmac_key = $key;
+        } else {
+            $this->private_key_content = $key;
+        }
         
         // Set API base URL (should come from GMPays settings)
         $this->api_base_url = $api_url ?: 'https://paygate.gamemoney.com';
@@ -77,6 +90,7 @@ geivrSfScNQH1mWJuE0DXMobNrhyJpxHRJwXXQyck6TiDM8OETki4PBzjKk/Gsyc
         
         if ($this->debug) {
             $this->log('info', 'GMPays API Client initialized with Project ID: ' . $this->project_id);
+            $this->log('info', 'Authentication Method: ' . $this->auth_method);
             $this->log('info', 'API Base URL: ' . $this->api_base_url);
         }
     }
@@ -146,41 +160,66 @@ geivrSfScNQH1mWJuE0DXMobNrhyJpxHRJwXXQyck6TiDM8OETki4PBzjKk/Gsyc
     }
     
     /**
-     * Generate RSA signature for request data
+     * Generate signature for request data
      *
      * @param array $data Request data
-     * @return string Base64 encoded signature
+     * @return string Generated signature
      */
     private function generate_signature($data) {
-        if (empty($this->private_key_content)) {
-            throw new Exception('Private key not configured');
+        try {
+            // Convert data to string according to GMPays specification
+            $string_to_sign = $this->array_to_string($data);
+            
+            if ($this->debug) {
+                $this->log('debug', 'String to sign: ' . $string_to_sign);
+            }
+            
+            if ($this->auth_method === 'hmac') {
+                // Generate HMAC signature
+                if (empty($this->hmac_key)) {
+                    throw new Exception('HMAC key is not configured');
+                }
+                
+                $signature = hash_hmac('sha256', $string_to_sign, $this->hmac_key);
+                
+                if ($this->debug) {
+                    $this->log('debug', 'Generated HMAC signature: ' . $signature);
+                }
+                
+                return $signature;
+                
+            } else {
+                // Generate RSA signature
+                if (empty($this->private_key_content)) {
+                    throw new Exception('RSA private key is not configured');
+                }
+                
+                $private_key = openssl_pkey_get_private($this->private_key_content);
+                if (!$private_key) {
+                    throw new Exception('Failed to load RSA private key: ' . openssl_error_string());
+                }
+                
+                $signature_binary = '';
+                $result = openssl_sign($string_to_sign, $signature_binary, $private_key, OPENSSL_ALGO_SHA256);
+                openssl_free_key($private_key);
+                
+                if (!$result) {
+                    throw new Exception('Failed to generate RSA signature: ' . openssl_error_string());
+                }
+                
+                $signature = base64_encode($signature_binary);
+                
+                if ($this->debug) {
+                    $this->log('debug', 'Generated RSA signature: ' . $signature);
+                }
+                
+                return $signature;
+            }
+            
+        } catch (Exception $e) {
+            $this->log('error', 'Signature generation failed: ' . $e->getMessage());
+            throw $e;
         }
-        
-        // Convert data to string according to GMPays specification
-        $string_to_sign = $this->array_to_string($data);
-        
-        $this->log('debug', 'String to sign: ' . $string_to_sign);
-        
-        // Get private key resource
-        $private_key = openssl_pkey_get_private($this->private_key_content);
-        if (!$private_key) {
-            throw new Exception('Invalid private key: ' . openssl_error_string());
-        }
-        
-        // Sign with SHA256
-        $signature = '';
-        $success = openssl_sign($string_to_sign, $signature, $private_key, OPENSSL_ALGO_SHA256);
-        
-        if (!$success) {
-            throw new Exception('Failed to generate signature: ' . openssl_error_string());
-        }
-        
-        // Encode signature in base64
-        $encoded_signature = base64_encode($signature);
-        
-        $this->log('debug', 'Generated signature: ' . substr($encoded_signature, 0, 50) . '...');
-        
-        return $encoded_signature;
     }
     
     /**
@@ -332,28 +371,46 @@ geivrSfScNQH1mWJuE0DXMobNrhyJpxHRJwXXQyck6TiDM8OETki4PBzjKk/Gsyc
         
         $this->log('debug', 'String to verify: ' . $string_to_verify);
         
-        // Get public key from GMPays certificate
-        $public_key = openssl_pkey_get_public($this->gmpays_certificate);
-        if (!$public_key) {
-            $this->log('error', 'Failed to extract public key from certificate');
-            return false;
-        }
-        
-        // Decode the signature from base64
-        $signature_binary = base64_decode($received_signature);
-        
-        // Verify signature
-        $result = openssl_verify($string_to_verify, $signature_binary, $public_key, OPENSSL_ALGO_SHA256);
-        
-        if ($result === 1) {
-            $this->log('info', 'Webhook signature verified successfully');
-            return true;
-        } elseif ($result === 0) {
-            $this->log('error', 'Webhook signature verification failed');
-            return false;
+        if ($this->auth_method === 'hmac') {
+            // Verify HMAC signature
+            if (empty($this->hmac_key)) {
+                $this->log('error', 'HMAC key not configured for verification');
+                return false;
+            }
+            
+            $expected_signature = hash_hmac('sha256', $string_to_verify, $this->hmac_key);
+            
+            if (hash_equals($expected_signature, $received_signature)) {
+                $this->log('info', 'HMAC webhook signature verified successfully');
+                return true;
+            } else {
+                $this->log('error', 'HMAC signature verification failed');
+                return false;
+            }
+            
         } else {
-            $this->log('error', 'Error during signature verification: ' . openssl_error_string());
-            return false;
+            // Verify RSA signature
+            // Get public key from GMPays certificate
+            $public_key = openssl_pkey_get_public($this->gmpays_certificate);
+            if (!$public_key) {
+                $this->log('error', 'Failed to extract public key from certificate');
+                return false;
+            }
+            
+            // Decode the signature from base64
+            $signature_binary = base64_decode($received_signature);
+            
+            // Verify signature
+            $result = openssl_verify($string_to_verify, $signature_binary, $public_key, OPENSSL_ALGO_SHA256);
+            openssl_free_key($public_key);
+            
+            if ($result === 1) {
+                $this->log('info', 'RSA webhook signature verified successfully');
+                return true;
+            } else {
+                $this->log('error', 'RSA signature verification failed');
+                return false;
+            }
         }
     }
     

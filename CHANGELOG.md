@@ -5,6 +5,34 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0] - 2024-12-19
+
+### ✨ Added
+- **Dual Authentication Support**: Added support for both HMAC and RSA authentication methods
+- **Authentication Method Selection**: Users can now choose between HMAC (simpler) and RSA (more secure)
+- **Dynamic Form Fields**: Admin interface automatically shows/hides relevant fields based on selected method
+- **HMAC Key Support**: Plugin now properly supports HMAC keys from GMPays control panel
+- **Backward Compatibility**: Existing RSA configurations continue to work
+
+### 🔧 Changed
+- Updated gateway settings to include authentication method selection
+- Modified API client to handle both HMAC and RSA signatures
+- Enhanced webhook signature verification for both methods
+- Updated installation documentation with dual authentication instructions
+- Improved error handling for authentication method mismatches
+
+### 🐛 Fixed
+- "Failed to create payment session: Unknown error" when using HMAC keys
+- Plugin now properly recognizes and uses HMAC authentication
+- Configuration validation now works for both authentication methods
+- Webhook signature verification supports both HMAC and RSA
+
+### 📚 Updated
+- Installation guide with step-by-step HMAC and RSA setup instructions
+- Troubleshooting section with authentication-specific solutions
+- Configuration examples for both methods
+- Security best practices for both authentication types
+
 ## [1.2.1] - 2024-12-19
 
 ### 🔧 Changed

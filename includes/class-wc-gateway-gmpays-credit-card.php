@@ -37,7 +37,7 @@ class WC_Gateway_GMPays_Credit_Card extends WC_Payment_Gateway {
         $this->icon               = apply_filters('woocommerce_gmpays_credit_card_icon', GMPAYS_WC_GATEWAY_PLUGIN_URL . 'assets/images/credit-cards.png');
         $this->has_fields         = false;
         $this->method_title       = __('GMPays Credit Card', 'gmpays-woocommerce-gateway');
-        $this->method_description = __('Accept international credit card payments via GMPays payment processor using RSA signatures.', 'gmpays-woocommerce-gateway');
+        $this->method_description = __('Accept international credit card payments via GMPays payment processor using HMAC or RSA signatures.', 'gmpays-woocommerce-gateway');
         $this->supports           = array(
             'products',
             'refunds',
@@ -53,11 +53,17 @@ class WC_Gateway_GMPays_Credit_Card extends WC_Payment_Gateway {
         $this->enabled            = $this->get_option('enabled');
         $this->api_url            = $this->get_option('api_url', 'https://paygate.gamemoney.com');
         $this->project_id         = $this->get_option('project_id');
+        $this->auth_method        = $this->get_option('auth_method', 'hmac');
+        $this->hmac_key          = $this->get_option('hmac_key');
         $this->private_key        = $this->get_option('private_key');
         
-        // Initialize API client with RSA private key and API URL
-        if (!empty($this->project_id) && !empty($this->private_key)) {
-            $this->api_client = new GMPays_API_Client($this->project_id, $this->private_key, $this->api_url);
+        // Initialize API client based on authentication method
+        if (!empty($this->project_id)) {
+            if ($this->auth_method === 'hmac' && !empty($this->hmac_key)) {
+                $this->api_client = new GMPays_API_Client($this->project_id, $this->hmac_key, $this->api_url, 'hmac');
+            } elseif ($this->auth_method === 'rsa' && !empty($this->private_key)) {
+                $this->api_client = new GMPays_API_Client($this->project_id, $this->private_key, $this->api_url, 'rsa');
+            }
         }
         
         $this->currency_manager = new GMPays_Currency_Manager();
@@ -69,6 +75,18 @@ class WC_Gateway_GMPays_Credit_Card extends WC_Payment_Gateway {
         // Add admin order page hooks
         add_action('woocommerce_admin_order_data_after_payment_info', array($this, 'display_gmpays_payment_details'));
         add_action('add_meta_boxes', array($this, 'add_gmpays_payment_meta_box'));
+        
+        // Add admin scripts for dynamic form fields
+        add_action('admin_enqueue_scripts', array($this, 'admin_scripts'));
+    }
+    
+    /**
+     * Enqueue admin scripts for dynamic form fields
+     */
+    public function admin_scripts() {
+        if (isset($_GET['section']) && $_GET['section'] === 'gmpays_credit_card') {
+            wp_enqueue_script('gmpays-admin', GMPAYS_WC_GATEWAY_PLUGIN_URL . 'assets/js/admin.js', array('jquery'), GMPAYS_WC_GATEWAY_VERSION, true);
+        }
     }
     
     /**
@@ -111,6 +129,28 @@ class WC_Gateway_GMPays_Credit_Card extends WC_Payment_Gateway {
                 'default'     => '',
                 'desc_tip'    => true,
                 'placeholder' => '603',
+            ),
+            'auth_method' => array(
+                'title'       => __('Authentication Method', 'gmpays-woocommerce-gateway'),
+                'type'        => 'select',
+                'description' => __('Choose how GMPays will authenticate your requests.', 'gmpays-woocommerce-gateway'),
+                'default'     => 'hmac',
+                'options'     => array(
+                    'hmac' => __('HMAC', 'gmpays-woocommerce-gateway'),
+                    'rsa'  => __('RSA', 'gmpays-woocommerce-gateway'),
+                ),
+            ),
+            'hmac_key' => array(
+                'title'       => __('HMAC Key', 'gmpays-woocommerce-gateway'),
+                'type'        => 'textarea',
+                'description' => __('Your HMAC Key (for HMAC authentication). Keep this secure!', 'gmpays-woocommerce-gateway'),
+                'default'     => '',
+                'desc_tip'    => false,
+                'placeholder' => "Your HMAC Key",
+                'custom_attributes' => array(
+                    'rows' => 5,
+                    'style' => 'font-family: monospace; width: 100%;'
+                ),
             ),
             'private_key' => array(
                 'title'       => __('RSA Private Key', 'gmpays-woocommerce-gateway'),
@@ -210,7 +250,7 @@ class WC_Gateway_GMPays_Credit_Card extends WC_Payment_Gateway {
      * @return bool
      */
     public function is_configured() {
-        return !empty($this->project_id) && !empty($this->private_key);
+        return !empty($this->project_id) && ($this->auth_method === 'hmac' ? !empty($this->hmac_key) : !empty($this->private_key));
     }
     
     /**
