@@ -37,7 +37,7 @@ class WC_Gateway_GMPays_Credit_Card extends WC_Payment_Gateway {
         $this->icon               = apply_filters('woocommerce_gmpays_credit_card_icon', GMPAYS_WC_GATEWAY_PLUGIN_URL . 'assets/images/credit-cards.png');
         $this->has_fields         = false;
         $this->method_title       = __('GMPays Credit Card', 'gmpays-woocommerce-gateway');
-        $this->method_description = __('Accept international credit card payments via GMPays payment processor using HMAC or RSA signatures. Features enhanced order management, automatic status updates, and comprehensive transaction tracking.', 'gmpays-woocommerce-gateway');
+        $this->method_description = __('Accept international credit card payments via GMPays payment processor using HMAC or RSA signatures. Features enhanced order management, automatic status updates, comprehensive transaction tracking, minimum amount validation, and failed payment handling.', 'gmpays-woocommerce-gateway');
         $this->supports           = array(
             'products',
             'refunds',
@@ -88,6 +88,12 @@ class WC_Gateway_GMPays_Credit_Card extends WC_Payment_Gateway {
         
         // Add admin scripts for dynamic form fields
         add_action('admin_enqueue_scripts', array($this, 'admin_scripts'));
+        
+        // Add minimum amount validation message
+        add_action('woocommerce_checkout_process', array($this, 'check_minimum_amount'));
+        
+        // Handle failed payment returns
+        add_action('woocommerce_cart_loaded_from_session', array($this, 'handle_failed_payment_return'));
     }
     
     /**
@@ -192,6 +198,14 @@ class WC_Gateway_GMPays_Credit_Card extends WC_Payment_Gateway {
                     <p style="color: #d9534f; margin-bottom: 0;"><strong>⚠️ Security Note:</strong> Never share your private key. Keep it secure!</p>
                 </div>',
             ),
+            'minimum_amount' => array(
+                'title'       => __('Minimum Amount', 'gmpays-woocommerce-gateway'),
+                'type'        => 'text',
+                'description' => __('Minimum order amount in EUR (GMPays requirement). Orders below this amount will be rejected.', 'gmpays-woocommerce-gateway'),
+                'default'     => '5.00',
+                'desc_tip'    => true,
+                'placeholder' => '5.00',
+            ),
             'webhook_configuration' => array(
                 'title'       => __('Webhook Configuration', 'gmpays-woocommerce-gateway'),
                 'type'        => 'title',
@@ -251,7 +265,16 @@ class WC_Gateway_GMPays_Credit_Card extends WC_Payment_Gateway {
             return false;
         }
         
-        return $this->is_valid_for_use();
+        if (!$this->is_valid_for_use()) {
+            return false;
+        }
+        
+        // Check minimum amount requirement
+        if (!$this->meets_minimum_amount()) {
+            return false;
+        }
+        
+        return true;
     }
     
     /**
@@ -306,6 +329,135 @@ class WC_Gateway_GMPays_Credit_Card extends WC_Payment_Gateway {
         $currencies = $wmc_settings->get_list_currencies();
         
         return isset($currencies['USD']);
+    }
+    
+    /**
+     * Check if the current order meets the minimum amount requirement
+     */
+    private function meets_minimum_amount() {
+        $minimum_amount = floatval($this->get_option('minimum_amount', '5.00'));
+        
+        // Get cart total
+        $cart_total = WC()->cart ? WC()->cart->get_total('edit') : 0;
+        
+        // If we have a cart, check the total
+        if ($cart_total > 0) {
+            // Convert to EUR if needed (GMPays minimum is in EUR)
+            $cart_total_eur = $this->currency_manager->convert_to_eur(WC()->cart);
+            
+            if ($cart_total_eur < $minimum_amount) {
+                return false;
+            }
+        }
+        
+        return true;
+    }
+    
+    /**
+     * Check minimum amount during checkout process
+     */
+    public function check_minimum_amount() {
+        if (!$this->meets_minimum_amount()) {
+            $minimum_amount = $this->get_option('minimum_amount', '5.00');
+            $store_currency = get_woocommerce_currency();
+            
+            // Convert minimum amount to store currency for display
+            $display_minimum = $minimum_amount;
+            if ($store_currency !== 'EUR') {
+                // Try to convert EUR to store currency for better user experience
+                if (class_exists('WOOMULTI_CURRENCY_Data')) {
+                    try {
+                        $wmc_settings = WOOMULTI_CURRENCY_Data::get_ins();
+                        $currencies = $wmc_settings->get_list_currencies();
+                        if (isset($currencies['EUR']) && isset($currencies[$store_currency])) {
+                            $eur_rate = floatval($currencies['EUR']['rate']);
+                            $store_rate = floatval($currencies[$store_currency]['rate']);
+                            if ($eur_rate > 0 && $store_rate > 0) {
+                                $display_minimum = ($minimum_amount / $eur_rate) * $store_rate;
+                                $display_minimum = number_format($display_minimum, 2);
+                            }
+                        }
+                    } catch (Exception $e) {
+                        // Keep EUR amount if conversion fails
+                    }
+                }
+            }
+            
+            wc_add_notice(
+                sprintf(
+                    __('Order amount is below the minimum required (%s EUR). Please add more items to your cart.', 'gmpays-woocommerce-gateway'),
+                    $display_minimum
+                ),
+                'error'
+            );
+        }
+    }
+    
+    /**
+     * Handle failed payment returns when customer comes back to cart
+     */
+    public function handle_failed_payment_return() {
+        // Check if we have a failed payment return
+        if (isset($_GET['gmpays_return']) && $_GET['gmpays_return'] === 'failed') {
+            $order_id = isset($_GET['order_id']) ? intval($_GET['order_id']) : 0;
+            
+            if ($order_id > 0) {
+                $order = wc_get_order($order_id);
+                
+                if ($order && $order->get_payment_method() === 'gmpays_credit_card') {
+                    // Mark order as failed
+                    $order->update_status('failed', __('Payment failed - Customer returned without completing payment via GMPays', 'gmpays-woocommerce-gateway'));
+                    
+                    // Add private note
+                    $order->add_order_note(
+                        __('GMPays Payment Return - Customer returned to cart without completing payment. Order marked as failed.', 'gmpays-woocommerce-gateway'),
+                        false,
+                        true
+                    );
+                    
+                    // Restore cart items
+                    $this->restore_cart_from_order($order);
+                    
+                    // Show notice to customer
+                    wc_add_notice(
+                        __('Your payment was not completed. The order has been cancelled and items restored to your cart. Please try again with a valid amount.', 'gmpays-woocommerce-gateway'),
+                        'notice'
+                    );
+                    
+                    // Clear the URL parameters
+                    wp_redirect(remove_query_arg(array('gmpays_return', 'order_id')));
+                    exit;
+                }
+            }
+        }
+    }
+    
+    /**
+     * Restore cart items from a failed order
+     */
+    private function restore_cart_from_order($order) {
+        if (!WC()->cart) {
+            return;
+        }
+        
+        // Clear current cart
+        WC()->cart->empty_cart();
+        
+        // Add items back to cart
+        foreach ($order->get_items() as $item) {
+            $product_id = $item->get_product_id();
+            $variation_id = $item->get_variation_id();
+            $quantity = $item->get_quantity();
+            
+            if ($variation_id > 0) {
+                WC()->cart->add_to_cart($product_id, $quantity, $variation_id);
+            } else {
+                WC()->cart->add_to_cart($product_id, $quantity);
+            }
+        }
+        
+        // Restore cart totals
+        WC()->cart->calculate_totals();
     }
     
     /**
@@ -389,8 +541,16 @@ class WC_Gateway_GMPays_Credit_Card extends WC_Payment_Gateway {
                 sprintf(__('GMPays payment failed: %s', 'gmpays-woocommerce-gateway'), $error_message)
             );
             
+            // Mark order as failed
+            $order->update_status('failed', __('Payment failed during processing: ' . $error_message, 'gmpays-woocommerce-gateway'));
+            
+            // Return to cart with failure parameters
             return array(
                 'result' => 'fail',
+                'redirect' => add_query_arg(array(
+                    'gmpays_return' => 'failed',
+                    'order_id' => $order_id
+                ), wc_get_cart_url())
             );
         }
     }

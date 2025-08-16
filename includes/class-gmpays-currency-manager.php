@@ -64,6 +64,59 @@ class GMPays_Currency_Manager {
     }
     
     /**
+     * Convert order total to EUR for minimum amount validation
+     *
+     * @param WC_Cart $cart Cart object
+     * @return float Cart total in EUR
+     */
+    public function convert_to_eur($cart) {
+        $cart_total = $cart->get_total('edit');
+        $store_currency = get_woocommerce_currency();
+        
+        if ($this->debug) {
+            wc_get_logger()->debug('Converting cart total to EUR - Original: ' . $cart_total . ' ' . $store_currency, array('source' => 'gmpays-currency'));
+        }
+        
+        // If already in EUR, return as is
+        if (strtoupper($store_currency) === 'EUR') {
+            return $cart_total;
+        }
+        
+        // Check if WooCommerce Multi Currency is active
+        if (class_exists('WOOMULTI_CURRENCY_Data')) {
+            return $this->convert_with_wmc($cart_total, $store_currency, 'EUR');
+        }
+        
+        // If no currency converter available, use a fallback rate (approximate)
+        // This is not ideal but prevents the gateway from being completely unavailable
+        $fallback_rates = array(
+            'USD' => 0.85,  // USD to EUR (approximate)
+            'COP' => 0.0002, // COP to EUR (approximate)
+            'MXN' => 0.042, // MXN to EUR (approximate)
+            'ARS' => 0.003, // ARS to EUR (approximate)
+            'VES' => 0.0000001, // VES to EUR (approximate)
+            'PEN' => 0.22, // PEN to EUR (approximate)
+            'CLP' => 0.0011, // CLP to EUR (approximate)
+            'BRL' => 0.16, // BRL to EUR (approximate)
+            'UYU' => 0.021, // UYU to EUR (approximate)
+        );
+        
+        if (isset($fallback_rates[$store_currency])) {
+            $converted_amount = $cart_total * $fallback_rates[$store_currency];
+            if ($this->debug) {
+                wc_get_logger()->debug('Using fallback rate for EUR conversion: ' . $cart_total . ' ' . $store_currency . ' = ' . $converted_amount . ' EUR', array('source' => 'gmpays-currency'));
+            }
+            return $converted_amount;
+        }
+        
+        // If we can't convert, assume it meets the minimum (better than blocking the gateway)
+        if ($this->debug) {
+            wc_get_logger()->warning('Could not convert ' . $store_currency . ' to EUR, assuming minimum amount requirement is met', array('source' => 'gmpays-currency'));
+        }
+        return 10.00; // Assume it meets minimum
+    }
+    
+    /**
      * Convert amount using WooCommerce Multi Currency plugin
      *
      * @param float $amount Amount to convert

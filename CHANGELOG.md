@@ -5,6 +5,33 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.3] - 2024-12-19
+
+### ✨ Added
+- **Minimum Amount Validation**: Added configurable minimum order amount (default: 5.00 EUR) to prevent orders below GMPays requirements
+- **Frontend Validation**: Checkout now prevents proceeding if order amount is below minimum requirement
+- **Failed Payment Handling**: Automatic order status management when customers return without completing payment
+- **Cart Restoration**: Failed orders automatically restore items to customer's cart
+- **Smart Currency Conversion**: Minimum amount validation works with multiple currencies using WooCommerce Multi Currency
+
+### 🔧 Changed
+- **Gateway Availability**: Gateway now automatically hides when order amount is below minimum
+- **Error Handling**: Better error messages for minimum amount violations
+- **Order Flow**: Failed payments now properly redirect to cart with failure parameters
+- **User Experience**: Customers get clear feedback about minimum amount requirements
+
+### 🐛 Fixed
+- **Pending Order Issue**: Fixed issue where orders remained "pending payment" when customers returned from GMPays without completing payment
+- **Order Status Management**: Orders are now properly marked as failed when payment processing fails
+- **Cart State**: Cart items are properly restored when orders fail
+
+### 📋 Technical Details
+- Added `minimum_amount` configuration field in gateway settings
+- Implemented `convert_to_eur()` method in currency manager for minimum amount validation
+- Added `meets_minimum_amount()` and `check_minimum_amount()` methods for validation
+- Implemented `handle_failed_payment_return()` for managing failed payment returns
+- Added `restore_cart_from_order()` method for cart restoration
+
 ## [1.3.2] - 2024-12-19
 
 ### ✨ Added
