@@ -113,6 +113,14 @@ class WC_Gateway_GMPays_Credit_Card extends WC_Payment_Gateway {
                 'default'     => '',
                 'desc_tip'    => true,
             ),
+            'test_mode' => array(
+                'title'       => __('Test Mode', 'gmpays-woocommerce-gateway'),
+                'type'        => 'checkbox',
+                'label'       => __('Enable Test Mode (Note: GMPays does not have a sandbox environment)', 'gmpays-woocommerce-gateway'),
+                'description' => __('This is for compatibility only. GMPays processes all transactions in production mode.', 'gmpays-woocommerce-gateway'),
+                'default'     => 'no',
+                'desc_tip'    => true,
+            ),
             'webhook_configuration' => array(
                 'title'       => __('Webhook Configuration', 'gmpays-woocommerce-gateway'),
                 'type'        => 'title',
@@ -150,11 +158,56 @@ class WC_Gateway_GMPays_Credit_Card extends WC_Payment_Gateway {
             return false;
         }
         
-        if (!$this->project_id || !$this->hmac_key) {
+        if (!$this->is_configured()) {
             return false;
         }
         
         return $this->is_valid_for_use();
+    }
+    
+    /**
+     * Check if this gateway is in test mode
+     * 
+     * @return bool
+     */
+    public function is_test_mode() {
+        return 'yes' === $this->get_option('test_mode', 'no');
+    }
+    
+    /**
+     * Check if this gateway is in test mode (alternative method)
+     * 
+     * @return bool
+     */
+    public function is_in_test_mode() {
+        return $this->is_test_mode();
+    }
+    
+    /**
+     * Check if this gateway is properly configured
+     * 
+     * @return bool
+     */
+    public function is_configured() {
+        return !empty($this->project_id) && !empty($this->hmac_key);
+    }
+    
+    /**
+     * Check if this gateway is connected (WooCommerce compatibility)
+     * 
+     * @return bool
+     */
+    public function is_connected() {
+        return $this->is_configured();
+    }
+    
+    /**
+     * Check if this gateway account is connected (WooCommerce compatibility)
+     * 
+     * @return bool
+     */
+    public function is_account_connected() {
+        return $this->is_configured();
     }
     
     /**
