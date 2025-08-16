@@ -5,6 +5,35 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.0] - 2024-12-19
+
+### ✨ Added
+- **Comprehensive Return URL Management**: Added proper handling for GMPays return URLs (success, failure, cancelled)
+- **REST API Endpoints**: New endpoints for handling GMPays return notifications
+- **Enhanced Order Status Management**: Orders now properly transition to "on-hold" status when payments are successful
+- **Transaction ID Integration**: Improved integration with WooCommerce native transaction ID field
+- **Return URL Parameters**: Added support for GMPays return URL parameters (transaction_id, amount, currency, reason)
+- **AJAX Payment Status Check**: Admin can now check payment status directly from order page
+
+### 🔧 Changed
+- **Order Status Flow**: Successful payments now consistently set order to "on-hold" instead of "pending payment"
+- **Return URL Handling**: Improved handling of customer returns from GMPays payment page
+- **Webhook Processing**: Enhanced webhook handling to ensure proper order status updates
+- **URL Structure**: Updated return URLs to include proper parameters for GMPays integration
+
+### 🐛 Fixed
+- **Failed Payment Returns**: Fixed issue where orders remained "pending payment" when customers returned from GMPays without completing payment
+- **Order Status Updates**: Orders are now properly marked as failed when payment processing fails
+- **Transaction ID Updates**: Fixed issue where transaction IDs weren't properly stored in WooCommerce
+- **Return URL Processing**: Fixed handling of GMPays return notifications
+
+### 📋 Technical Details
+- Added `handle_gmpays_returns()` method for processing return URL parameters
+- Implemented REST API endpoints for GMPays return handling
+- Added `ajax_check_payment_status()` method for admin payment status verification
+- Enhanced webhook handler to ensure consistent order status management
+- Updated URL generation to include proper GMPays return parameters
+
 ## [1.3.3] - 2024-12-19
 
 ### ✨ Added

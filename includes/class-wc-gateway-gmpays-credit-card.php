@@ -94,6 +94,13 @@ class WC_Gateway_GMPays_Credit_Card extends WC_Payment_Gateway {
         
         // Handle failed payment returns
         add_action('woocommerce_cart_loaded_from_session', array($this, 'handle_failed_payment_return'));
+        
+        // Handle GMPays return URLs
+        add_action('init', array($this, 'handle_gmpays_returns'));
+        
+        // Add AJAX handlers for admin actions
+        add_action('wp_ajax_gmpays_check_status', array($this, 'ajax_check_payment_status'));
+        add_action('wp_ajax_nopriv_gmpays_check_status', array($this, 'ajax_check_payment_status'));
     }
     
     /**
@@ -213,10 +220,12 @@ class WC_Gateway_GMPays_Credit_Card extends WC_Payment_Gateway {
                     __('Configure these URLs in your GMPays control panel:', 'gmpays-woocommerce-gateway') . 
                     '<br><strong>Notification URL (URL для оповещений о выплатах):</strong> <code>%s</code>' .
                     '<br><strong>Success URL (URL перенаправления пользователя в случае успешной оплаты):</strong> <code>%s</code>' .
-                    '<br><strong>Failure URL (URL перенаправления пользователя в случае неуспешной оплаты):</strong> <code>%s</code>',
+                    '<br><strong>Failure URL (URL перенаправления пользователя в случае неуспешной оплаты):</strong> <code>%s</code>' .
+                    '<br><strong>Cancel URL (URL перенаправления пользователя при отмене оплаты):</strong> <code>%s</code>',
                     home_url('/wp-json/gmpays/v1/webhook'),
-                    wc_get_checkout_url() . 'order-received/',
-                    wc_get_checkout_url()
+                    home_url('/?gmpays_success=1&order_id={order_id}'),
+                    home_url('/?gmpays_failure=1&order_id={order_id}'),
+                    home_url('/?gmpays_cancelled=1&order_id={order_id}')
                 ),
             ),
             'debug' => array(
@@ -433,6 +442,200 @@ class WC_Gateway_GMPays_Credit_Card extends WC_Payment_Gateway {
     }
     
     /**
+     * Handle GMPays return URLs (success and failure)
+     */
+    public function handle_gmpays_returns() {
+        // Only process on frontend
+        if (is_admin()) {
+            return;
+        }
+        
+        // Handle success return from GMPays
+        if (isset($_GET['gmpays_success']) && isset($_GET['order_id'])) {
+            $this->handle_success_return();
+        }
+        
+        // Handle failure return from GMPays
+        if (isset($_GET['gmpays_failure']) && isset($_GET['order_id'])) {
+            $this->handle_failure_return();
+        }
+        
+        // Handle cancelled return from GMPays
+        if (isset($_GET['gmpays_cancelled']) && isset($_GET['order_id'])) {
+            $this->handle_cancelled_return();
+        }
+    }
+    
+    /**
+     * Handle successful payment return from GMPays
+     */
+    private function handle_success_return() {
+        $order_id = intval($_GET['order_id']);
+        $order = wc_get_order($order_id);
+        
+        if (!$order || $order->get_payment_method() !== 'gmpays_credit_card') {
+            return;
+        }
+        
+        // Check if order is already processed
+        if ($order->is_paid()) {
+            // Redirect to thank you page
+            wp_redirect($this->get_return_url($order));
+            exit;
+        }
+        
+        // Get GMPays transaction details from URL parameters
+        $transaction_id = isset($_GET['transaction_id']) ? sanitize_text_field($_GET['transaction_id']) : '';
+        $amount = isset($_GET['amount']) ? floatval($_GET['amount']) : 0;
+        $currency = isset($_GET['currency']) ? sanitize_text_field($_GET['currency']) : 'USD';
+        
+        // Mark order as on-hold (pending confirmation)
+        $order->update_status('on-hold', __('Payment received via GMPays - Order placed on hold for confirmation', 'gmpays-woocommerce-gateway'));
+        
+        // Add public note
+        $note = sprintf(
+            __('Payment completed successfully via GMPays.\nTransaction ID: %s\nAmount: %s %s\nPayment Method: Credit Card', 'gmpays-woocommerce-gateway'),
+            $transaction_id ?: 'Pending',
+            $amount ?: $order->get_total(),
+            strtoupper($currency)
+        );
+        $order->add_order_note($note, false, false);
+        
+        // Add private note
+        $private_note = sprintf(
+            __('GMPays Payment Success - Order #%s has been paid via GMPays. Transaction ID: %s. Order placed on hold for manual review.', 'gmpays-woocommerce-gateway'),
+            $order->get_order_number(),
+            $transaction_id ?: 'Pending'
+        );
+        $order->add_order_note($private_note, false, true);
+        
+        // Update payment metadata
+        if ($transaction_id) {
+            $order->update_meta_data('_gmpays_transaction_id', $transaction_id);
+            $order->set_transaction_id($transaction_id);
+        }
+        $order->update_meta_data('_gmpays_payment_status', 'completed');
+        $order->update_meta_data('_gmpays_payment_completed_at', current_time('mysql'));
+        
+        $order->save();
+        
+        // Complete payment
+        $order->payment_complete($transaction_id);
+        
+        // Clear cart
+        if (WC()->cart) {
+            WC()->cart->empty_cart();
+        }
+        
+        // Redirect to thank you page
+        wp_redirect($this->get_return_url($order));
+        exit;
+    }
+    
+    /**
+     * Handle failed payment return from GMPays
+     */
+    private function handle_failure_return() {
+        $order_id = intval($_GET['order_id']);
+        $order = wc_get_order($order_id);
+        
+        if (!$order || $order->get_payment_method() !== 'gmpays_credit_card') {
+            return;
+        }
+        
+        // Get failure reason from URL parameters
+        $reason = isset($_GET['reason']) ? sanitize_text_field($_GET['reason']) : __('Payment processing failed', 'gmpays-woocommerce-gateway');
+        $invoice_id = isset($_GET['invoice_id']) ? sanitize_text_field($_GET['invoice_id']) : '';
+        
+        // Mark order as failed
+        $order->update_status('failed', __('Payment failed via GMPays: ' . $reason, 'gmpays-woocommerce-gateway'));
+        
+        // Add public note
+        $note = sprintf(
+            __('Payment failed via GMPays.\nInvoice ID: %s\nReason: %s\nPlease contact customer to retry payment.', 'gmpays-woocommerce-gateway'),
+            $invoice_id ?: 'N/A',
+            $reason
+        );
+        $order->add_order_note($note, false, false);
+        
+        // Add private note
+        $private_note = sprintf(
+            __('GMPays Payment Failure - Order #%s payment failed via GMPays. Invoice ID: %s. Reason: %s', 'gmpays-woocommerce-gateway'),
+            $order->get_order_number(),
+            $invoice_id ?: 'N/A',
+            $reason
+        );
+        $order->add_order_note($private_note, false, true);
+        
+        // Update payment metadata
+        $order->update_meta_data('_gmpays_payment_status', 'failed');
+        $order->update_meta_data('_gmpays_payment_failed_at', current_time('mysql'));
+        if ($reason) {
+            $order->update_meta_data('_gmpays_payment_failure_reason', $reason);
+        }
+        
+        $order->save();
+        
+        // Restore cart items
+        $this->restore_cart_from_order($order);
+        
+        // Show notice to customer
+        wc_add_notice(
+            sprintf(__('Your payment failed: %s. The order has been cancelled and items restored to your cart. Please try again.', 'gmpays-woocommerce-gateway'), $reason),
+            'error'
+        );
+        
+        // Redirect to cart
+        wp_redirect(wc_get_cart_url());
+        exit;
+    }
+    
+    /**
+     * Handle cancelled payment return from GMPays
+     */
+    private function handle_cancelled_return() {
+        $order_id = intval($_GET['order_id']);
+        $order = wc_get_order($order_id);
+        
+        if (!$order || $order->get_payment_method() !== 'gmpays_credit_card') {
+            return;
+        }
+        
+        // Mark order as cancelled
+        $order->update_status('cancelled', __('Payment cancelled by customer via GMPays', 'gmpays-woocommerce-gateway'));
+        
+        // Add public note
+        $note = __('Payment cancelled via GMPays.\nCustomer did not complete payment.', 'gmpays-woocommerce-gateway');
+        $order->add_order_note($note, false, false);
+        
+        // Add private note
+        $private_note = sprintf(
+            __('GMPays Payment Cancellation - Order #%s payment was cancelled via GMPays. Customer did not complete payment.', 'gmpays-woocommerce-gateway'),
+            $order->get_order_number()
+        );
+        $order->add_order_note($private_note, false, true);
+        
+        // Update payment metadata
+        $order->update_meta_data('_gmpays_payment_status', 'cancelled');
+        $order->update_meta_data('_gmpays_payment_cancelled_at', current_time('mysql'));
+        
+        $order->save();
+        
+        // Restore cart items
+        $this->restore_cart_from_order($order);
+        
+        // Show notice to customer
+        wc_add_notice(
+            __('Your payment was cancelled. The order has been cancelled and items restored to your cart. Please try again when ready.', 'gmpays-woocommerce-gateway'),
+            'notice'
+        );
+        
+        // Redirect to cart
+        wp_redirect(wc_get_cart_url());
+        exit;
+    }
+    
+    /**
      * Restore cart items from a failed order
      */
     private function restore_cart_from_order($order) {
@@ -458,6 +661,98 @@ class WC_Gateway_GMPays_Credit_Card extends WC_Payment_Gateway {
         
         // Restore cart totals
         WC()->cart->calculate_totals();
+    }
+    
+    /**
+     * AJAX handler for checking payment status
+     */
+    public function ajax_check_payment_status() {
+        // Verify nonce
+        if (!wp_verify_nonce($_POST['nonce'], 'gmpays_check_status')) {
+            wp_die(__('Security check failed', 'gmpays-woocommerce-gateway'));
+        }
+        
+        $invoice_id = sanitize_text_field($_POST['invoice_id']);
+        $order_id = intval($_POST['order_id']);
+        
+        if (!$invoice_id || !$order_id) {
+            wp_send_json_error(__('Invalid parameters', 'gmpays-woocommerce-gateway'));
+        }
+        
+        $order = wc_get_order($order_id);
+        if (!$order) {
+            wp_send_json_error(__('Order not found', 'gmpays-woocommerce-gateway'));
+        }
+        
+        try {
+            // Check payment status via GMPays API
+            $status_response = $this->api_client->get_invoice_status($invoice_id);
+            
+            if ($status_response && isset($status_response['status'])) {
+                $status = $status_response['status'];
+                
+                switch ($status) {
+                    case 'Paid':
+                    case 'paid':
+                    case 'success':
+                        // Update order status to on-hold
+                        $order->update_status('on-hold', __('Payment confirmed via GMPays API check', 'gmpays-woocommerce-gateway'));
+                        
+                        // Add note
+                        $order->add_order_note(
+                            __('Payment status confirmed via GMPays API check. Order moved to on-hold status.', 'gmpays-woocommerce-gateway'),
+                            false,
+                            true
+                        );
+                        
+                        wp_send_json_success(array(
+                            'message' => __('Payment confirmed! Order status updated to on-hold.', 'gmpays-woocommerce-gateway'),
+                            'status' => 'on-hold'
+                        ));
+                        break;
+                        
+                    case 'Failed':
+                    case 'failed':
+                    case 'error':
+                        // Update order status to failed
+                        $order->update_status('failed', __('Payment failed via GMPays API check', 'gmpays-woocommerce-gateway'));
+                        
+                        // Add note
+                        $order->add_order_note(
+                            __('Payment failed via GMPays API check. Order marked as failed.', 'gmpays-woocommerce-gateway'),
+                            false,
+                            true
+                        );
+                        
+                        wp_send_json_success(array(
+                            'message' => __('Payment failed! Order status updated to failed.', 'gmpays-woocommerce-gateway'),
+                            'status' => 'failed'
+                        ));
+                        break;
+                        
+                    case 'Pending':
+                    case 'pending':
+                    case 'processing':
+                        wp_send_json_success(array(
+                            'message' => __('Payment is still processing. Please wait for confirmation.', 'gmpays-woocommerce-gateway'),
+                            'status' => 'pending'
+                        ));
+                        break;
+                        
+                    default:
+                        wp_send_json_success(array(
+                            'message' => sprintf(__('Payment status: %s', 'gmpays-woocommerce-gateway'), $status),
+                            'status' => $status
+                        ));
+                        break;
+                }
+            } else {
+                wp_send_json_error(__('Unable to retrieve payment status from GMPays', 'gmpays-woocommerce-gateway'));
+            }
+            
+        } catch (Exception $e) {
+            wp_send_json_error(__('Error checking payment status: ', 'gmpays-woocommerce-gateway') . $e->getMessage());
+        }
     }
     
     /**
@@ -591,6 +886,22 @@ class WC_Gateway_GMPays_Credit_Card extends WC_Payment_Gateway {
         $customer_name = $order->get_billing_first_name() . ' ' . $order->get_billing_last_name();
         $customer_email = $order->get_billing_email();
         
+        // Prepare return URLs for GMPays
+        $success_url = add_query_arg(array(
+            'gmpays_success' => '1',
+            'order_id' => $order->get_id()
+        ), home_url('/'));
+        
+        $failure_url = add_query_arg(array(
+            'gmpays_failure' => '1',
+            'order_id' => $order->get_id()
+        ), home_url('/'));
+        
+        $cancel_url = add_query_arg(array(
+            'gmpays_cancelled' => '1',
+            'order_id' => $order->get_id()
+        ), home_url('/'));
+        
         // Prepare invoice data for GMPays API
         $invoice_data = array(
             'amount' => $order_total_usd,
@@ -600,8 +911,8 @@ class WC_Gateway_GMPays_Credit_Card extends WC_Payment_Gateway {
             'customer_email' => $customer_email,
             'customer_name' => trim($customer_name),
             'customer_ip' => $order->get_customer_ip_address(),
-            'return_url' => $this->get_return_url($order),
-            'cancel_url' => wc_get_checkout_url(),
+            'return_url' => $success_url,
+            'cancel_url' => $cancel_url,
             'webhook_url' => home_url('/wp-json/gmpays/v1/webhook'),
         );
         
