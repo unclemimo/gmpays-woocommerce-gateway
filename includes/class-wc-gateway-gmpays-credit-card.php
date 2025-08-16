@@ -61,8 +61,18 @@ class WC_Gateway_GMPays_Credit_Card extends WC_Payment_Gateway {
         if (!empty($this->project_id)) {
             if ($this->auth_method === 'hmac' && !empty($this->hmac_key)) {
                 $this->api_client = new GMPays_API_Client($this->project_id, $this->hmac_key, $this->api_url, 'hmac');
+                if ($this->get_option('debug') === 'yes') {
+                    error_log('GMPays: HMAC API client initialized successfully');
+                }
             } elseif ($this->auth_method === 'rsa' && !empty($this->private_key)) {
                 $this->api_client = new GMPays_API_Client($this->project_id, $this->private_key, $this->api_url, 'rsa');
+                if ($this->get_option('debug') === 'yes') {
+                    error_log('GMPays: RSA API client initialized successfully');
+                }
+            } else {
+                if ($this->get_option('debug') === 'yes') {
+                    error_log('GMPays: API client not initialized. Project ID: ' . $this->project_id . ', Auth Method: ' . $this->auth_method . ', HMAC Key: ' . (!empty($this->hmac_key) ? 'set' : 'not set') . ', Private Key: ' . (!empty($this->private_key) ? 'set' : 'not set'));
+                }
             }
         }
         
@@ -250,7 +260,17 @@ class WC_Gateway_GMPays_Credit_Card extends WC_Payment_Gateway {
      * @return bool
      */
     public function is_configured() {
-        return !empty($this->project_id) && ($this->auth_method === 'hmac' ? !empty($this->hmac_key) : !empty($this->private_key));
+        if (empty($this->project_id)) {
+            return false;
+        }
+        
+        if ($this->auth_method === 'hmac') {
+            return !empty($this->hmac_key);
+        } elseif ($this->auth_method === 'rsa') {
+            return !empty($this->private_key);
+        }
+        
+        return false;
     }
     
     /**

@@ -229,7 +229,10 @@ geivrSfScNQH1mWJuE0DXMobNrhyJpxHRJwXXQyck6TiDM8OETki4PBzjKk/Gsyc
      * @return array|false Response data or false on failure
      */
     public function create_invoice($order_data) {
-        if (empty($this->private_key_content)) {
+        if ($this->auth_method === 'hmac' && empty($this->hmac_key)) {
+            $this->log('error', 'HMAC key not configured');
+            throw new Exception('Payment gateway configuration error: HMAC key missing');
+        } elseif ($this->auth_method === 'rsa' && empty($this->private_key_content)) {
             $this->log('error', 'Private key not configured');
             throw new Exception('Payment gateway configuration error: Private key missing');
         }
@@ -241,10 +244,10 @@ geivrSfScNQH1mWJuE0DXMobNrhyJpxHRJwXXQyck6TiDM8OETki4PBzjKk/Gsyc
                 'user' => strval($order_data['order_id']),
                 'ip' => $order_data['customer_ip'] ?? $_SERVER['REMOTE_ADDR'],
                 'amount' => number_format($order_data['amount'], 2, '.', ''),
-                'currency' => 'USD',
                 'type' => 'card', // For credit card payment
-                'description' => substr($order_data['description'], 0, 255),
+                'comment' => substr($order_data['description'], 0, 255),
                 'project_invoice' => strval($order_data['order_id']),
+                'wallet' => '', // Empty wallet for credit card payments
                 'success_url' => $order_data['return_url'],
                 'fail_url' => $order_data['cancel_url'],
             );
@@ -255,7 +258,7 @@ geivrSfScNQH1mWJuE0DXMobNrhyJpxHRJwXXQyck6TiDM8OETki4PBzjKk/Gsyc
             }
             
             if (!empty($order_data['customer_email'])) {
-                $request_data['email'] = $order_data['customer_email'];
+                $request_data['add_email'] = $order_data['customer_email'];
             }
             
             // Generate signature
@@ -264,28 +267,28 @@ geivrSfScNQH1mWJuE0DXMobNrhyJpxHRJwXXQyck6TiDM8OETki4PBzjKk/Gsyc
             $this->log('info', 'Creating invoice with project ID: ' . $this->project_id);
             $this->log('debug', 'Request data (without signature): ' . json_encode(array_diff_key($request_data, ['signature' => ''])));
             
-            // Send request to GMPays
-            $response = $this->send_request('/invoice/create', $request_data);
+            // For credit card payments, we'll use the terminal approach as per GMPays documentation
+            // This creates a payment session and redirects to the payment terminal
+            $response = $this->send_request('/terminal/create', $request_data);
             
-            if (!$response || !isset($response['success']) || !$response['success']) {
+            if (!$response || !isset($response['state']) || $response['state'] !== 'success') {
                 $error_msg = isset($response['error']) ? $response['error'] : 'Unknown error';
                 throw new Exception('Failed to create payment session: ' . $error_msg);
             }
             
-            $this->log('info', 'Invoice created successfully');
+            $this->log('info', 'Terminal payment session created successfully');
             
-            // Extract invoice ID and payment URL from response
-            $invoice_id = isset($response['data']['invoice']) ? $response['data']['invoice'] : null;
-            $payment_url = isset($response['data']['url']) ? $response['data']['url'] : null;
+            // Extract payment URL from response
+            $payment_url = isset($response['url']) ? $response['url'] : null;
             
-            if (!$payment_url && $invoice_id) {
-                // Construct payment URL if not provided
-                $payment_url = $this->api_base_url . '/invoice/' . $invoice_id;
+            // If no payment URL, construct it
+            if (!$payment_url) {
+                $payment_url = $this->api_base_url . '/terminal/create';
             }
             
             return array(
                 'success' => true,
-                'invoice_id' => $invoice_id,
+                'invoice_id' => $order_data['order_id'], // Use order ID as invoice ID for terminal approach
                 'payment_url' => $payment_url,
                 'data' => $response
             );
@@ -515,7 +518,10 @@ geivrSfScNQH1mWJuE0DXMobNrhyJpxHRJwXXQyck6TiDM8OETki4PBzjKk/Gsyc
      * @return bool
      */
     public function test_connection() {
-        if (empty($this->private_key_content)) {
+        if ($this->auth_method === 'hmac' && empty($this->hmac_key)) {
+            $this->log('error', 'Cannot test connection - HMAC key not configured');
+            return false;
+        } elseif ($this->auth_method === 'rsa' && empty($this->private_key_content)) {
             $this->log('error', 'Cannot test connection - private key not configured');
             return false;
         }
