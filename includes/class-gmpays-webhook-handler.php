@@ -278,22 +278,34 @@ geivrSfScNQH1mWJuE0DXMobNrhyJpxHRJwXXQyck6TiDM8OETki4PBzjKk/Gsyc
                          (isset($data['id']) ? $data['id'] : 
                          (isset($data['transaction_id']) ? $data['transaction_id'] : ''));
         
-        // Complete payment
+        // Complete payment and set order to on-hold (pending confirmation)
         $order->payment_complete($transaction_id);
+        $order->update_status('on-hold', __('Payment received via GMPays - Order placed on hold for confirmation', 'gmpays-woocommerce-gateway'));
         
-        // Add detailed order note
+        // Add detailed order note (public)
         $note = sprintf(
             __('Payment completed successfully via GMPays.\nTransaction ID: %s\nAmount: %s %s\nPayment Method: Credit Card', 'gmpays-woocommerce-gateway'),
             $transaction_id,
             isset($data['amount']) ? $data['amount'] : $order->get_total(),
             isset($data['currency']) ? strtoupper($data['currency']) : 'USD'
         );
-        $order->add_order_note($note, false, true);
+        $order->add_order_note($note, false, false);
+        
+        // Add private note with transaction details
+        $private_note = sprintf(
+            __('GMPays Payment Success - Order #%s has been paid via GMPays. Transaction ID: %s. Order placed on hold for manual review.', 'gmpays-woocommerce-gateway'),
+            $order->get_order_number(),
+            $transaction_id
+        );
+        $order->add_order_note($private_note, false, true);
         
         // Update payment metadata
         $order->update_meta_data('_gmpays_transaction_id', $transaction_id);
         $order->update_meta_data('_gmpays_payment_status', 'completed');
         $order->update_meta_data('_gmpays_payment_completed_at', current_time('mysql'));
+        
+        // Set WooCommerce native transaction ID field
+        $order->set_transaction_id($transaction_id);
         
         if (isset($data['payment_method'])) {
             $order->update_meta_data('_gmpays_payment_method_used', $data['payment_method']);
@@ -331,13 +343,22 @@ geivrSfScNQH1mWJuE0DXMobNrhyJpxHRJwXXQyck6TiDM8OETki4PBzjKk/Gsyc
         // Update order status to failed
         $order->update_status('failed', __('Payment failed via GMPays', 'gmpays-woocommerce-gateway'));
         
-        // Add detailed failure note
+        // Add detailed failure note (public)
         $note = sprintf(
             __('Payment failed via GMPays.\nInvoice ID: %s\nReason: %s\nPlease contact customer to retry payment.', 'gmpays-woocommerce-gateway'),
             isset($data['invoice']) ? $data['invoice'] : 'N/A',
             isset($data['reason']) ? $data['reason'] : __('Payment processing error', 'gmpays-woocommerce-gateway')
         );
-        $order->add_order_note($note, false, true);
+        $order->add_order_note($note, false, false);
+        
+        // Add private note with failure details
+        $private_note = sprintf(
+            __('GMPays Payment Failure - Order #%s payment failed via GMPays. Invoice ID: %s. Reason: %s', 'gmpays-woocommerce-gateway'),
+            $order->get_order_number(),
+            isset($data['invoice']) ? $data['invoice'] : 'N/A',
+            isset($data['reason']) ? $data['reason'] : __('Payment processing error', 'gmpays-woocommerce-gateway')
+        );
+        $order->add_order_note($private_note, false, true);
         
         // Update payment metadata
         $order->update_meta_data('_gmpays_payment_status', 'failed');
@@ -371,12 +392,20 @@ geivrSfScNQH1mWJuE0DXMobNrhyJpxHRJwXXQyck6TiDM8OETki4PBzjKk/Gsyc
         // Update order status to cancelled
         $order->update_status('cancelled', __('Payment cancelled via GMPays', 'gmpays-woocommerce-gateway'));
         
-        // Add cancellation note
+        // Add cancellation note (public)
         $note = sprintf(
             __('Payment cancelled via GMPays.\nInvoice ID: %s\nCustomer did not complete payment.', 'gmpays-woocommerce-gateway'),
             isset($data['invoice']) ? $data['invoice'] : 'N/A'
         );
-        $order->add_order_note($note, false, true);
+        $order->add_order_note($note, false, false);
+        
+        // Add private note with cancellation details
+        $private_note = sprintf(
+            __('GMPays Payment Cancellation - Order #%s payment was cancelled via GMPays. Invoice ID: %s. Customer did not complete payment.', 'gmpays-woocommerce-gateway'),
+            $order->get_order_number(),
+            isset($data['invoice']) ? $data['invoice'] : 'N/A'
+        );
+        $order->add_order_note($private_note, false, true);
         
         // Update payment metadata
         $order->update_meta_data('_gmpays_payment_status', 'cancelled');
@@ -403,7 +432,7 @@ geivrSfScNQH1mWJuE0DXMobNrhyJpxHRJwXXQyck6TiDM8OETki4PBzjKk/Gsyc
             return false;
         }
         
-        // Add refund note
+        // Add refund note (public)
         $note = sprintf(
             __('Refund processed via GMPays.\nRefund ID: %s\nAmount: %s %s\nReason: %s', 'gmpays-woocommerce-gateway'),
             isset($data['refund_id']) ? $data['refund_id'] : 'N/A',
@@ -411,7 +440,18 @@ geivrSfScNQH1mWJuE0DXMobNrhyJpxHRJwXXQyck6TiDM8OETki4PBzjKk/Gsyc
             isset($data['currency']) ? strtoupper($data['currency']) : 'USD',
             isset($data['reason']) ? $data['reason'] : __('No reason provided', 'gmpays-woocommerce-gateway')
         );
-        $order->add_order_note($note, false, true);
+        $order->add_order_note($note, false, false);
+        
+        // Add private note with refund details
+        $private_note = sprintf(
+            __('GMPays Refund Processed - Order #%s refund processed via GMPays. Refund ID: %s. Amount: %s %s. Reason: %s', 'gmpays-woocommerce-gateway'),
+            $order->get_order_number(),
+            isset($data['refund_id']) ? $data['refund_id'] : 'N/A',
+            isset($data['amount']) ? $data['amount'] : 'N/A',
+            isset($data['currency']) ? strtoupper($data['currency']) : 'USD',
+            isset($data['reason']) ? $data['reason'] : __('No reason provided', 'gmpays-woocommerce-gateway')
+        );
+        $order->add_order_note($private_note, false, true);
         
         // Update refund metadata
         $order->update_meta_data('_gmpays_refund_id', isset($data['refund_id']) ? $data['refund_id'] : '');

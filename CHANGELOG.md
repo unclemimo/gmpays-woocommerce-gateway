@@ -5,6 +5,45 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.2] - 2024-12-19
+
+### ✨ Added
+- **Enhanced Order Management**: Orders now automatically move to "on-hold" status when payment is successful
+- **Private Order Notes**: Added private notes for all payment events (success, failure, cancellation, refund)
+- **Transaction ID Integration**: Now properly sets WooCommerce native `transaction_id` field
+- **Processing Fee Notice**: Added note about banking processing fees in order descriptions
+- **Improved Webhook Handling**: Enhanced webhook processing with better order status management
+
+### 🔧 Changed
+- **Order Status Flow**: Successful payments now set order to "on-hold" instead of "pending payment"
+- **Note Visibility**: Public notes for customers, private notes for administrators
+- **Description Format**: Order descriptions now include processing fee information
+- **Metadata Management**: Better integration with WooCommerce native fields
+
+### 🐛 Fixed
+- **Order Status Updates**: Fixed issue where successful payments didn't update order status properly
+- **Transaction Tracking**: Improved transaction ID handling and storage
+- **Webhook Processing**: Enhanced error handling and logging for webhook events
+
+## [1.3.1] - 2024-12-19
+
+### 🐛 Bug Fixes
+
+### Fixed HMAC Authentication Issues
+- **Fixed API Client Initialization**: Updated `is_configured()` method to properly check HMAC vs RSA authentication
+- **Fixed Private Key Validation Errors**: Updated `create_invoice()` method to check for HMAC key when HMAC is selected
+- **Fixed Test Connection Method**: Updated `test_connection()` method to handle both authentication methods
+- **Removed Hardcoded Private Key Requirements**: HMAC authentication no longer requires RSA private keys
+
+### Updated API Integration
+- **Changed API Endpoint**: Updated from `/invoice` to `/terminal/create` for credit card payments (per GMPays documentation)
+- **Fixed Request Data Format**: 
+  - Changed `description` to `comment` (per GMPays API specification)
+  - Changed `email` to `add_email` (per GMPays API specification)
+  - Added `wallet` field (required by GMPays terminal API)
+- **Updated Response Handling**: Modified to match GMPays terminal API response format
+- **Fixed Signature Generation**: HMAC signatures now properly generated for terminal API calls
+
 ## [1.3.0] - 2024-12-19
 
 ### ✨ Added
@@ -22,16 +61,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Improved error handling for authentication method mismatches
 
 ### 🐛 Fixed
-- "Failed to create payment session: Unknown error" when using HMAC keys
-- Plugin now properly recognizes and uses HMAC authentication
-- Configuration validation now works for both authentication methods
-- Webhook signature verification supports both HMAC and RSA
+- Fixed HMAC authentication not working due to hardcoded RSA requirements
+- Fixed API client initialization errors when using HMAC keys
+- Fixed signature verification failures for HMAC authentication
+- Fixed configuration validation errors for HMAC method
 
-### 📚 Updated
-- Installation guide with step-by-step HMAC and RSA setup instructions
-- Troubleshooting section with authentication-specific solutions
-- Configuration examples for both methods
-- Security best practices for both authentication types
+## [1.2.0] - 2024-12-18
+
+### ✨ Added
+- **RSA Signature Support**: Replaced HMAC with RSA signatures for enhanced security
+- **Enhanced Security**: Added RSA private key authentication
+- **Improved Error Handling**: Better error messages and logging
+- **Webhook Signature Verification**: Added RSA signature verification for webhooks
+
+### 🔧 Changed
+- **Authentication Method**: Changed from HMAC to RSA signatures
+- **API Security**: Enhanced API request security with RSA signatures
+- **Documentation**: Updated installation guide for RSA key setup
+
+### 🚨 Breaking Changes
+- **HMAC Keys No Longer Supported**: Plugin now requires RSA private keys
+- **Configuration Update Required**: Users must regenerate RSA keys in GMPays control panel
+
+## [1.1.0] - 2024-12-17
+
+### ✨ Added
+- **Initial Release**: Basic GMPays WooCommerce integration
+- **Credit Card Support**: Accept international credit card payments
+- **Multi-Currency Support**: Automatic USD conversion for international payments
+- **Webhook Integration**: Payment status notifications
+- **Admin Interface**: Payment gateway configuration and order management
+
+### 🔧 Features
+- **Payment Processing**: Secure credit card payment processing via GMPays
+- **Order Management**: Automatic order status updates
+- **Currency Conversion**: Real-time currency conversion to USD
+- **Error Handling**: Comprehensive error handling and logging
+- **Security**: HMAC signature verification for webhooks
 
 ## [1.2.1] - 2024-12-19
 
@@ -49,43 +115,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Included all Composer dependencies in release ZIP
 - No need to run `composer install` on server
 - Plugin ready to use immediately after installation
-
-## [1.2.0] - 2024-12-19
-
-### 🚨 BREAKING CHANGES
-- **Authentication Method Changed**: Switched from HMAC to RSA signatures for enhanced security
-- **Configuration Update Required**: Users must regenerate RSA keys and update plugin settings
-- **PHP Version Requirement**: Increased minimum PHP version from 7.2 to 7.4
-
-### ✨ Added
-- RSA-SHA256 signature generation for API requests
-- RSA signature verification for webhook notifications
-- `setup-gmpays.sh` script for automatic RSA key generation
-- Enhanced security with proper certificate verification
-- Better error handling and logging for RSA operations
-
-### 🔧 Changed
-- Updated `class-gmpays-api-client.php` to use RSA signatures instead of HMAC
-- Updated `class-gmpays-webhook-handler.php` to verify RSA signatures
-- Improved signature generation algorithm to match GMPays specification
-- Enhanced webhook security with RSA verification
-
-### 🐛 Fixed
-- Inconsistent authentication methods between API client and webhook handler
-- Security vulnerabilities in HMAC-based signature verification
-- Missing proper error handling for cryptographic operations
-
-### 📚 Updated
-- README.md with new RSA configuration instructions
-- Installation guide with RSA key generation steps
-- Security documentation to reflect RSA implementation
-- Version requirements and compatibility information
-
-### 🔒 Security
-- Replaced HMAC with RSA signatures for stronger security
-- Added proper certificate verification for GMPays communications
-- Enhanced webhook signature validation
-- Improved cryptographic key management
 
 ## [1.1.0] - 2024-12-15
 

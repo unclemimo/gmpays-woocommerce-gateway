@@ -37,7 +37,7 @@ class WC_Gateway_GMPays_Credit_Card extends WC_Payment_Gateway {
         $this->icon               = apply_filters('woocommerce_gmpays_credit_card_icon', GMPAYS_WC_GATEWAY_PLUGIN_URL . 'assets/images/credit-cards.png');
         $this->has_fields         = false;
         $this->method_title       = __('GMPays Credit Card', 'gmpays-woocommerce-gateway');
-        $this->method_description = __('Accept international credit card payments via GMPays payment processor using HMAC or RSA signatures.', 'gmpays-woocommerce-gateway');
+        $this->method_description = __('Accept international credit card payments via GMPays payment processor using HMAC or RSA signatures. Features enhanced order management, automatic status updates, and comprehensive transaction tracking.', 'gmpays-woocommerce-gateway');
         $this->supports           = array(
             'products',
             'refunds',
@@ -471,6 +471,9 @@ class WC_Gateway_GMPays_Credit_Card extends WC_Payment_Gateway {
             }
             $description .= ': ' . $items_text;
         }
+        
+        // Add note about processing fee
+        $description .= ' (El importe reflejado muestra la comisión de procesamiento bancario)';
         
         // GMPays has a 255 character limit for descriptions
         if (strlen($description) > 255) {
