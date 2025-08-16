@@ -2,7 +2,7 @@
 /**
  * GMPays API Client Class
  *
- * Handles all API communications with GMPays payment processor
+ * Handles all API communications with GMPays payment processor using the official SDK
  *
  * @package GMPaysWooCommerceGateway
  */
@@ -17,442 +17,333 @@ if (!defined('ABSPATH')) {
  */
 class GMPays_API_Client {
     
-    /**
-     * API endpoints
-     */
-    const API_BASE_URL = 'https://api.gmpays.com/api/';
-    const API_BASE_URL_TEST = 'https://api.pay.gmpays.com/api/';
-    
-    /**
-     * Project ID
-     */
+    /** @var int */
     private $project_id;
     
-    /**
-     * API Key
-     */
-    private $api_key;
-    
-    /**
-     * HMAC Key for signature verification
-     */
+    /** @var string */
     private $hmac_key;
     
-    /**
-     * Test mode flag
-     */
-    private $testmode;
+    /** @var \Gamemoney\Gateway|null */
+    private $gamemoney_sdk;
     
-    /**
-     * Debug mode flag
-     */
+    /** @var bool */
     private $debug;
     
     /**
      * Constructor
+     * 
+     * @param int|string $project_id GMPays Project ID (e.g., 603)
+     * @param string $hmac_key GMPays HMAC Key
      */
-    public function __construct($project_id, $api_key, $hmac_key, $testmode = false) {
-        $this->project_id = $project_id;
-        $this->api_key = $api_key;
+    public function __construct($project_id, $hmac_key) {
+        $this->project_id = intval($project_id);
         $this->hmac_key = $hmac_key;
-        $this->testmode = $testmode;
         
         // Get debug setting from gateway options
         $gateway_settings = get_option('woocommerce_gmpays_credit_card_settings', array());
         $this->debug = isset($gateway_settings['debug']) && $gateway_settings['debug'] === 'yes';
+        
+        $this->init_gamemoney_sdk();
     }
     
     /**
-     * Get API base URL
+     * Initialize GameMoney SDK
      */
-    private function get_api_url() {
-        return $this->testmode ? self::API_BASE_URL_TEST : self::API_BASE_URL;
+    private function init_gamemoney_sdk() {
+        if (empty($this->project_id) || empty($this->hmac_key)) {
+            $this->log('error', 'Missing required credentials: Project ID or HMAC Key');
+            return;
+        }
+        
+        try {
+            // The Gamemoney SDK uses 'project' for Project ID and 'hmac' for HMAC Key
+            // No private key needed for basic operations (credit card processing)
+            $config = new \Gamemoney\Config($this->project_id, $this->hmac_key);
+            $this->gamemoney_sdk = new \Gamemoney\Gateway($config);
+            $this->log('info', 'GMPays SDK initialized successfully');
+        } catch (Exception $e) {
+            $this->log('error', 'GMPays SDK initialization failed: ' . $e->getMessage());
+        }
     }
     
     /**
      * Create an invoice/payment session
      *
-     * @param array $invoice_data Invoice data
+     * @param array $order_data Order data from WooCommerce
      * @return array|false Response data or false on failure
      */
-    public function create_invoice($invoice_data) {
-        $endpoint = 'invoice';
-        
-        // Prepare the request data according to GMPays API documentation
-        $request_data = array(
-            'project' => $this->project_id,
-            'amount' => round($invoice_data['amount'], 2), // Amount in USD
-            'currency' => 'USD', // GMPays primarily works with USD
-            'type' => 'payment', // Payment type
-            'comment' => $invoice_data['description'],
-            'user' => $invoice_data['customer']['email'],
-            'ip' => $this->get_customer_ip(),
-            'success_url' => $invoice_data['success_url'],
-            'fail_url' => $invoice_data['cancel_url'],
-            'wallet' => 'card', // Credit card payment method
-            'add_fields' => array(
-                'order_id' => $invoice_data['order_id'],
-                'order_key' => $invoice_data['order_key'],
-                'customer_name' => $invoice_data['customer']['name'],
-                'customer_email' => $invoice_data['customer']['email'],
-                'customer_phone' => $invoice_data['customer']['phone'],
-                'customer_address' => json_encode($invoice_data['customer']['address']),
-            ),
-        );
-        
-        // Add signature
-        $request_data['signature'] = $this->generate_signature($request_data);
-        
-        // Make API request
-        $response = $this->make_request($endpoint, $request_data, 'POST');
-        
-        if ($response && isset($response['id'])) {
-            return array(
-                'invoice_id' => $response['id'],
-                'payment_url' => $this->build_payment_url($response['id']),
-                'status' => $response['status'] ?? 'pending',
-            );
+    public function create_invoice($order_data) {
+        if (!$this->gamemoney_sdk) {
+            $this->log('error', 'SDK not initialized');
+            return false;
         }
         
-        return false;
+        try {
+            $request_factory = new \Gamemoney\Request\RequestFactory();
+            
+            // Prepare invoice data for GMPays
+            $invoice_data = array(
+                'amount' => $order_data['amount'], // Amount in USD
+                'currency' => 'USD', // GMPays processes in USD
+                'order' => $order_data['order_id'],
+                'description' => $order_data['description'],
+                'type' => 'normal', // Payment type
+                'user' => $order_data['customer_email'],
+                'ip' => $order_data['customer_ip'] ?? $_SERVER['REMOTE_ADDR'],
+                'success_url' => $order_data['return_url'],
+                'fail_url' => $order_data['cancel_url'],
+                'callback_url' => $order_data['webhook_url'] ?? home_url('/wp-json/gmpays/v1/webhook'),
+                'locale' => $this->get_locale_for_gmpays(),
+            );
+            
+            // Add optional fields if present
+            if (!empty($order_data['customer_name'])) {
+                $invoice_data['name'] = $order_data['customer_name'];
+            }
+            
+            // Add card-specific parameters if needed
+            if (!empty($order_data['payment_method']) && $order_data['payment_method'] === 'card') {
+                $invoice_data['payment_system'] = 'card';
+            }
+            
+            $this->log('info', 'Creating invoice with data: ' . json_encode($invoice_data));
+            
+            // Create the invoice request
+            $request = $request_factory->invoiceCreate($invoice_data);
+            
+            // Send the request
+            $response = $this->gamemoney_sdk->send($request);
+            
+            $this->log('info', 'Invoice created successfully: ' . json_encode($response));
+            
+            return array(
+                'success' => true,
+                'invoice_id' => $response['id'] ?? null,
+                'payment_url' => $response['url'] ?? null,
+                'data' => $response
+            );
+            
+        } catch (\Gamemoney\Exception\RequestValidationException $e) {
+            $this->log('error', 'Request validation failed: ' . $e->getMessage());
+            $this->log('error', 'Validation errors: ' . json_encode($e->getErrors()));
+            return false;
+        } catch (\Gamemoney\Exception\GamemoneyExceptionInterface $e) {
+            $this->log('error', 'GMPays API error: ' . $e->getMessage());
+            return false;
+        } catch (Exception $e) {
+            $this->log('error', 'Unexpected error: ' . $e->getMessage());
+            return false;
+        }
     }
     
     /**
-     * Check invoice/payment status
+     * Get invoice status
      *
      * @param string $invoice_id Invoice ID
      * @return array|false Response data or false on failure
      */
-    public function check_invoice_status($invoice_id) {
-        $endpoint = 'invoice/status';
+    public function get_invoice_status($invoice_id) {
+        if (!$this->gamemoney_sdk) {
+            $this->log('error', 'SDK not initialized');
+            return false;
+        }
         
-        $request_data = array(
-            'project' => $this->project_id,
-            'invoice' => $invoice_id,
-        );
-        
-        // Add signature
-        $request_data['signature'] = $this->generate_signature($request_data);
-        
-        return $this->make_request($endpoint, $request_data, 'POST');
+        try {
+            $request_factory = new \Gamemoney\Request\RequestFactory();
+            $request = $request_factory->getInvoiceStatus($invoice_id);
+            $response = $this->gamemoney_sdk->send($request);
+            
+            $this->log('info', 'Invoice status retrieved: ' . json_encode($response));
+            
+            return array(
+                'success' => true,
+                'status' => $response['status'] ?? 'unknown',
+                'data' => $response
+            );
+            
+        } catch (\Gamemoney\Exception\GamemoneyExceptionInterface $e) {
+            $this->log('error', 'Failed to get invoice status: ' . $e->getMessage());
+            return false;
+        }
     }
     
     /**
-     * Refund a payment
+     * Process callback/webhook from GMPays
      *
-     * @param string $invoice_id Invoice ID
-     * @param float $amount Amount to refund
-     * @param string $reason Refund reason
-     * @return array|false Response data or false on failure
+     * @param array $data Webhook data
+     * @param string $signature Webhook signature
+     * @return array|false Processed data or false on failure
      */
-    public function refund_payment($invoice_id, $amount, $reason = '') {
-        $endpoint = 'invoice/refund';
+    public function process_callback($data, $signature = null) {
+        if (!$this->gamemoney_sdk) {
+            $this->log('error', 'SDK not initialized');
+            return false;
+        }
         
-        $request_data = array(
-            'project' => $this->project_id,
-            'invoice' => $invoice_id,
-            'amount' => round($amount, 2),
-            'comment' => $reason ?: 'Refund requested',
-        );
-        
-        // Add signature
-        $request_data['signature'] = $this->generate_signature($request_data);
-        
-        return $this->make_request($endpoint, $request_data, 'POST');
-    }
-    
-    /**
-     * Cancel an invoice
-     *
-     * @param string $invoice_id Invoice ID
-     * @return array|false Response data or false on failure
-     */
-    public function cancel_invoice($invoice_id) {
-        $endpoint = 'invoice/cancel';
-        
-        $request_data = array(
-            'project' => $this->project_id,
-            'invoice' => $invoice_id,
-        );
-        
-        // Add signature
-        $request_data['signature'] = $this->generate_signature($request_data);
-        
-        return $this->make_request($endpoint, $request_data, 'POST');
+        try {
+            // Create appropriate callback handler based on callback type
+            $handler = null;
+            
+            if (isset($data['type']) && $data['type'] === 'invoice') {
+                $handler = new \Gamemoney\CallbackHandler\InvoiceCallbackHandler($this->hmac_key);
+            } else {
+                // Default to invoice handler
+                $handler = new \Gamemoney\CallbackHandler\InvoiceCallbackHandler($this->hmac_key);
+            }
+            
+            // Verify and process the callback
+            $result = $handler->handle($data);
+            
+            $this->log('info', 'Callback processed successfully: ' . json_encode($result));
+            
+            return array(
+                'success' => true,
+                'data' => $result
+            );
+            
+        } catch (\Gamemoney\Exception\SignatureVerificationException $e) {
+            $this->log('error', 'Signature verification failed: ' . $e->getMessage());
+            return false;
+        } catch (Exception $e) {
+            $this->log('error', 'Callback processing failed: ' . $e->getMessage());
+            return false;
+        }
     }
     
     /**
      * Verify webhook signature
      *
      * @param array $data Webhook data
-     * @param string $signature Received signature
-     * @return boolean True if signature is valid
+     * @param string $signature Provided signature
+     * @return bool
      */
-    public function verify_webhook_signature($data, $signature) {
-        // Remove the signature from data before verification
-        unset($data['signature']);
-        
-        // Generate expected signature
-        $expected_signature = $this->generate_signature($data);
-        
-        // Compare signatures
-        return hash_equals($expected_signature, $signature);
-    }
-    
-    /**
-     * Generate HMAC signature for API request
-     *
-     * @param array $data Request data
-     * @return string Generated signature
-     */
-    private function generate_signature($data) {
-        // Sort data by keys
-        ksort($data);
-        
-        // Build signature string according to GMPays documentation
-        $signature_string = '';
-        foreach ($data as $key => $value) {
-            if ($key !== 'signature' && !is_array($value) && !is_object($value)) {
-                $signature_string .= $value . ':';
-            }
+    public function verify_signature($data, $signature) {
+        try {
+            $verifier = new \Gamemoney\Sign\SignatureVerifier($this->hmac_key);
+            return $verifier->verify($data, $signature);
+        } catch (Exception $e) {
+            $this->log('error', 'Signature verification error: ' . $e->getMessage());
+            return false;
         }
-        
-        // Add HMAC key at the end
-        $signature_string .= $this->hmac_key;
-        
-        // Generate MD5 hash (GMPays uses MD5 for signatures)
-        return md5($signature_string);
     }
     
     /**
-     * Make HTTP request to GMPays API
+     * Get appropriate locale for GMPays
      *
-     * @param string $endpoint API endpoint
-     * @param array $data Request data
-     * @param string $method HTTP method
+     * @return string
+     */
+    private function get_locale_for_gmpays() {
+        $locale = get_locale();
+        
+        // Map WordPress locales to GMPays supported locales
+        $locale_map = array(
+            'es_ES' => 'es',
+            'es_MX' => 'es',
+            'es_AR' => 'es',
+            'es_CO' => 'es',
+            'es_VE' => 'es',
+            'en_US' => 'en',
+            'en_GB' => 'en',
+            'pt_BR' => 'pt',
+            'ru_RU' => 'ru',
+        );
+        
+        // Return mapped locale or default to Spanish for Latin America
+        return isset($locale_map[$locale]) ? $locale_map[$locale] : 'es';
+    }
+    
+    /**
+     * Process refund
+     *
+     * @param string $transaction_id Original transaction ID
+     * @param float $amount Amount to refund
+     * @param string $reason Refund reason
      * @return array|false Response data or false on failure
      */
-    private function make_request($endpoint, $data, $method = 'POST') {
-        $url = $this->get_api_url() . $endpoint;
-        
-        if ($this->debug) {
-            wc_get_logger()->debug('GMPays API Request to ' . $url . ': ' . print_r($data, true), array('source' => 'gmpays-api'));
-        }
-        
-        $args = array(
-            'method' => $method,
-            'timeout' => 30,
-            'redirection' => 5,
-            'httpversion' => '1.1',
-            'blocking' => true,
-            'headers' => array(
-                'Content-Type' => 'application/json',
-                'Accept' => 'application/json',
-                'Authorization' => 'Bearer ' . $this->api_key,
-            ),
-            'body' => json_encode($data),
-            'data_format' => 'body',
-        );
-        
-        $response = wp_remote_request($url, $args);
-        
-        if (is_wp_error($response)) {
-            if ($this->debug) {
-                wc_get_logger()->error('GMPays API Error: ' . $response->get_error_message(), array('source' => 'gmpays-api'));
-            }
+    public function process_refund($transaction_id, $amount, $reason = '') {
+        if (!$this->gamemoney_sdk) {
+            $this->log('error', 'SDK not initialized');
             return false;
         }
         
-        $response_code = wp_remote_retrieve_response_code($response);
-        $response_body = wp_remote_retrieve_body($response);
-        
-        if ($this->debug) {
-            wc_get_logger()->debug('GMPays API Response (' . $response_code . '): ' . $response_body, array('source' => 'gmpays-api'));
-        }
-        
-        if ($response_code >= 200 && $response_code < 300) {
-            $data = json_decode($response_body, true);
+        try {
+            // Note: GMPays refund implementation would go here
+            // The exact method depends on GMPays API documentation
+            // This is a placeholder for when refund functionality is available
             
-            if (json_last_error() === JSON_ERROR_NONE) {
-                return $data;
-            }
+            $this->log('warning', 'Refund functionality not yet implemented in GMPays SDK');
+            
+            return array(
+                'success' => false,
+                'message' => __('Refunds are not yet supported by GMPays gateway', 'gmpays-woocommerce-gateway')
+            );
+            
+        } catch (Exception $e) {
+            $this->log('error', 'Refund failed: ' . $e->getMessage());
+            return false;
         }
-        
-        return false;
     }
     
     /**
-     * Build payment URL for redirect
+     * Log messages
      *
-     * @param string $invoice_id Invoice ID
-     * @return string Payment URL
+     * @param string $level Log level (info, error, warning)
+     * @param string $message Message to log
      */
-    private function build_payment_url($invoice_id) {
-        $base_url = $this->testmode ? 'https://checkout.pay.gmpays.com' : 'https://checkout.gmpays.com';
-        return $base_url . '/invoice/' . $invoice_id;
-    }
-    
-    /**
-     * Get customer IP address
-     *
-     * @return string Customer IP address
-     */
-    private function get_customer_ip() {
-        $ip_keys = array(
-            'HTTP_CF_CONNECTING_IP', // Cloudflare
-            'HTTP_CLIENT_IP',
-            'HTTP_X_FORWARDED_FOR',
-            'HTTP_X_FORWARDED',
-            'HTTP_X_CLUSTER_CLIENT_IP',
-            'HTTP_FORWARDED_FOR',
-            'HTTP_FORWARDED',
-            'REMOTE_ADDR'
-        );
-        
-        foreach ($ip_keys as $key) {
-            if (array_key_exists($key, $_SERVER) === true) {
-                $ips = explode(',', $_SERVER[$key]);
-                foreach ($ips as $ip) {
-                    $ip = trim($ip);
-                    
-                    if (filter_var($ip, FILTER_VALIDATE_IP, 
-                        FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE) !== false) {
-                        return $ip;
-                    }
-                }
-            }
+    private function log($level, $message) {
+        if (!$this->debug && $level === 'info') {
+            return;
         }
         
-        return isset($_SERVER['REMOTE_ADDR']) ? $_SERVER['REMOTE_ADDR'] : '127.0.0.1';
-    }
-    
-    /**
-     * Process webhook notification
-     *
-     * @param array $webhook_data Webhook data from GMPays
-     * @return boolean True if processed successfully
-     */
-    public function process_webhook($webhook_data) {
-        // Verify signature first
-        if (!isset($webhook_data['signature'])) {
-            if ($this->debug) {
-                wc_get_logger()->error('GMPays webhook missing signature', array('source' => 'gmpays-api'));
-            }
-            return false;
-        }
+        $logger = wc_get_logger();
+        $context = array('source' => 'gmpays');
         
-        $signature = $webhook_data['signature'];
-        if (!$this->verify_webhook_signature($webhook_data, $signature)) {
-            if ($this->debug) {
-                wc_get_logger()->error('GMPays webhook signature verification failed', array('source' => 'gmpays-api'));
-            }
-            return false;
-        }
-        
-        // Process based on webhook type
-        if (isset($webhook_data['type'])) {
-            switch ($webhook_data['type']) {
-                case 'payment':
-                    return $this->process_payment_webhook($webhook_data);
-                case 'refund':
-                    return $this->process_refund_webhook($webhook_data);
-                default:
-                    if ($this->debug) {
-                        wc_get_logger()->info('Unknown GMPays webhook type: ' . $webhook_data['type'], array('source' => 'gmpays-api'));
-                    }
-            }
-        }
-        
-        return true;
-    }
-    
-    /**
-     * Process payment webhook
-     *
-     * @param array $data Webhook data
-     * @return boolean
-     */
-    private function process_payment_webhook($data) {
-        if (!isset($data['invoice']) || !isset($data['status'])) {
-            return false;
-        }
-        
-        // Find order by invoice ID
-        $orders = wc_get_orders(array(
-            'meta_key' => '_gmpays_invoice_id',
-            'meta_value' => $data['invoice'],
-            'limit' => 1,
-        ));
-        
-        if (empty($orders)) {
-            if ($this->debug) {
-                wc_get_logger()->warning('Order not found for GMPays invoice: ' . $data['invoice'], array('source' => 'gmpays-api'));
-            }
-            return false;
-        }
-        
-        $order = $orders[0];
-        
-        // Update order based on payment status
-        switch ($data['status']) {
-            case 'paid':
-            case 'success':
-                $order->payment_complete($data['invoice']);
-                $order->add_order_note(sprintf(
-                    __('Payment completed via GMPays. Transaction ID: %s', 'gmpays-woocommerce-gateway'),
-                    $data['invoice']
-                ));
-                
-                // Save transaction details
-                $order->update_meta_data('_gmpays_transaction_id', $data['invoice']);
-                $order->update_meta_data('_gmpays_payment_status', 'completed');
-                $order->update_meta_data('_gmpays_payment_completed_at', current_time('mysql'));
+        switch ($level) {
+            case 'error':
+                $logger->error($message, $context);
                 break;
-                
-            case 'fail':
-            case 'failed':
-                $order->update_status('failed', __('Payment failed via GMPays', 'gmpays-woocommerce-gateway'));
-                $order->update_meta_data('_gmpays_payment_status', 'failed');
+            case 'warning':
+                $logger->warning($message, $context);
                 break;
-                
-            case 'cancel':
-            case 'cancelled':
-                $order->update_status('cancelled', __('Payment cancelled via GMPays', 'gmpays-woocommerce-gateway'));
-                $order->update_meta_data('_gmpays_payment_status', 'cancelled');
+            case 'info':
+            default:
+                $logger->info($message, $context);
                 break;
         }
-        
-        $order->save();
-        return true;
     }
     
     /**
-     * Process refund webhook
+     * Test connection to GMPays
      *
-     * @param array $data Webhook data
-     * @return boolean
+     * @return bool
      */
-    private function process_refund_webhook($data) {
-        // Handle refund notifications
-        if (!isset($data['invoice'])) {
+    public function test_connection() {
+        if (!$this->gamemoney_sdk) {
             return false;
         }
         
-        // Find order by invoice ID
-        $orders = wc_get_orders(array(
-            'meta_key' => '_gmpays_invoice_id',
-            'meta_value' => $data['invoice'],
-            'limit' => 1,
-        ));
-        
-        if (!empty($orders)) {
-            $order = $orders[0];
-            $order->add_order_note(sprintf(
-                __('Refund processed via GMPays. Amount: %s', 'gmpays-woocommerce-gateway'),
-                isset($data['amount']) ? wc_price($data['amount']) : 'N/A'
-            ));
+        try {
+            // Try to get a non-existent invoice status
+            // This should fail with a specific error if credentials are wrong
+            $request_factory = new \Gamemoney\Request\RequestFactory();
+            $request = $request_factory->getInvoiceStatus('test_' . time());
+            $this->gamemoney_sdk->send($request);
+            
+            // If we get here, credentials are likely valid
+            return true;
+            
+        } catch (\Gamemoney\Exception\RequestValidationException $e) {
+            // This is expected for a non-existent invoice
+            return true;
+        } catch (\Gamemoney\Exception\GamemoneyExceptionInterface $e) {
+            // Check if it's an authentication error
+            if (strpos($e->getMessage(), 'auth') !== false || strpos($e->getMessage(), '401') !== false) {
+                return false;
+            }
+            // Other errors might still mean connection is OK
+            return true;
+        } catch (Exception $e) {
+            return false;
         }
-        
-        return true;
     }
 }

@@ -1,339 +1,334 @@
-# GMPays WooCommerce Payment Gateway - Installation Guide
+# GMPays WooCommerce Gateway - Installation Guide
 
-## 🌍 Language / Idioma
-- [English](#english)
-- [Español](#español)
-
----
-
-## English
-
-# Installation Guide for GMPays WooCommerce Gateway
+## Table of Contents
+1. [Prerequisites](#prerequisites)
+2. [Installation Methods](#installation-methods)
+3. [Initial Configuration](#initial-configuration)
+4. [GMPays Account Setup](#gmpays-account-setup)
+5. [Testing Your Integration](#testing-your-integration)
+6. [Troubleshooting](#troubleshooting)
 
 ## Prerequisites
 
 Before installing the GMPays WooCommerce Gateway, ensure you have:
 
-1. **WordPress 5.0+** installed
-2. **WooCommerce 5.0+** installed and activated
-3. **PHP 7.4+** or higher
-4. **WooCommerce Multi Currency** plugin (recommended for non-USD stores)
-5. **GMPays Account** with approved API credentials
+- ✅ WordPress 5.0 or higher
+- ✅ WooCommerce 4.0 or higher
+- ✅ PHP 7.2 or higher
+- ✅ SSL certificate installed (required for payment processing)
+- ✅ GMPays merchant account ([Sign up at gmpays.com](https://gmpays.com))
 
-## Step 1: Install Dependencies
+### Recommended Plugins
 
-The plugin uses the GMPays PHP SDK. Install it using Composer:
+For stores using currencies other than USD:
+- [WooCommerce Multi Currency](https://wordpress.org/plugins/woocommerce-multi-currency/) - For automatic USD conversion
 
-```bash
-cd wp-content/plugins/gmpays-woocommerce-gateway
-composer install
+## Installation Methods
+
+### Method 1: Install from GitHub Release (Recommended)
+
+1. **Download the Plugin**
+   - Go to [GitHub Releases](https://github.com/unclemimo/gmpays-woocommerce-gateway/releases)
+   - Download the latest `gmpays-woocommerce-gateway-vX.X.X.zip` file
+
+2. **Upload to WordPress**
+   - Log in to your WordPress admin panel
+   - Navigate to **Plugins → Add New**
+   - Click **Upload Plugin**
+   - Choose the downloaded ZIP file
+   - Click **Install Now**
+
+3. **Activate the Plugin**
+   - After installation, click **Activate Plugin**
+   - Or go to **Plugins → Installed Plugins** and activate it there
+
+### Method 2: Manual Installation via FTP
+
+1. **Download and Extract**
+   - Download the plugin from GitHub
+   - Extract the ZIP file on your computer
+
+2. **Upload via FTP**
+   - Connect to your server using FTP client
+   - Navigate to `/wp-content/plugins/`
+   - Upload the entire `gmpays-woocommerce-gateway` folder
+
+3. **Activate in WordPress**
+   - Log in to WordPress admin
+   - Go to **Plugins → Installed Plugins**
+   - Find "GMPays WooCommerce Gateway" and click **Activate**
+
+### Method 3: Install from Source (For Developers)
+
+1. **Clone the Repository**
+   ```bash
+   cd wp-content/plugins/
+   git clone https://github.com/unclemimo/gmpays-woocommerce-gateway.git
+   ```
+
+2. **Install Dependencies**
+   ```bash
+   cd gmpays-woocommerce-gateway
+   composer install --no-dev --optimize-autoloader
+   ```
+
+3. **Activate the Plugin**
+   - Go to WordPress admin → **Plugins**
+   - Activate "GMPays WooCommerce Gateway"
+
+## Initial Configuration
+
+### Step 1: Access Plugin Settings
+
+1. Navigate to **WooCommerce → Settings**
+2. Click on the **Payments** tab
+3. Find **Credit Card (GMPays)** in the list
+4. Click **Manage** to configure
+
+### Step 2: Basic Settings
+
+Configure these essential settings:
+
+| Setting | Description | Example |
+|---------|-------------|---------|
+| **Enable/Disable** | Enable the payment gateway | ✅ Checked |
+| **Title** | Name shown to customers at checkout | "Credit Card (GMPays)" |
+| **Description** | Payment method description | "Pay securely with your credit card" |
+
+### Step 3: Enable Debug Mode (Optional)
+
+During initial setup, enable debug logging:
+- Check **Enable logging**
+- Logs will be available at **WooCommerce → Status → Logs → gmpays**
+
+## GMPays Account Setup
+
+### Step 1: Access Your GMPays Control Panel
+
+1. Log in to [cp.gmpays.com](https://cp.gmpays.com)
+2. Navigate to your project settings
+
+### Step 2: Obtain Your Credentials
+
+In your GMPays control panel, locate:
+
+1. **Project ID**
+   - Found under "ID IN PROJECT"
+   - Example: `603`
+   - This is your unique project identifier
+
+2. **HMAC Key**
+   - Click "Regenerate HMAC Key" button to generate
+   - Copy the generated key
+   - Keep this secure - it's used for signature verification
+
+### Step 3: Configure Webhook URLs
+
+In the GMPays control panel, configure these URLs (replace `yourdomain.com` with your actual domain):
+
+#### Success URL
 ```
+https://yourdomain.com/checkout/order-received/
+```
+*URL перенаправления пользователя в случае успешной оплаты*
 
-If you don't have Composer, download it from [getcomposer.org](https://getcomposer.org/).
+#### Failure URL
+```
+https://yourdomain.com/checkout/
+```
+*URL перенаправления пользователя в случае неуспешной оплаты*
 
-## Step 2: Upload and Activate Plugin
+#### Notification URL (Webhook)
+```
+https://yourdomain.com/wp-json/gmpays/v1/webhook
+```
+*URL для оповещений о выплатах*
 
-### Method 1: Manual Upload
-1. Upload the `gmpays-woocommerce-gateway` folder to `/wp-content/plugins/`
-2. Go to **WordPress Admin → Plugins**
-3. Find "GMPays WooCommerce Payment Gateway" and click **Activate**
+### Step 4: Enter Credentials in WooCommerce
 
-### Method 2: ZIP Upload
-1. Compress the plugin folder into a ZIP file
-2. Go to **WordPress Admin → Plugins → Add New**
-3. Click **Upload Plugin** and select your ZIP file
-4. Click **Install Now** and then **Activate**
+Back in WooCommerce GMPays settings:
 
-## Step 3: Get GMPays Credentials
-
-1. Log in to your [GMPays account](https://cp.gmpays.com)
-2. Navigate to **API Settings** or **Integration**
-3. Obtain the following credentials:
-   - **Project ID**: Your unique project identifier
-   - **API Key**: Your API authentication key
-   - **HMAC Key**: Your signature verification key
-4. Note the environment URLs:
-   - **Test**: `https://checkout.pay.gmpays.com`
-   - **Live**: `https://checkout.gmpays.com`
-
-## Step 4: Configure the Plugin
-
-1. Go to **WooCommerce → Settings → Payments**
-2. Find **Credit Card (GMPays)** and click **Manage**
-3. Configure the following settings:
-
-### Basic Settings
-- **Enable/Disable**: Check to enable the gateway
-- **Title**: Display name at checkout (e.g., "Credit Card")
-- **Description**: Payment method description for customers
-
-### API Configuration
-- **Test Mode**: Enable for testing (recommended initially)
-- **Project ID**: Enter your GMPays Project ID
-- **Test API Key**: Your sandbox API key
-- **Test HMAC Key**: Your sandbox HMAC key
-- **Live API Key**: Your production API key (when ready)
-- **Live HMAC Key**: Your production HMAC key (when ready)
-
-### Advanced Settings
-- **Payment Action**: Choose "Capture" or "Authorize Only"
-- **Debug Log**: Enable for troubleshooting
-
+1. **Project ID**: Enter your GMPays Project ID (e.g., `603`)
+2. **HMAC Key**: Enter your GMPays HMAC Key
+3. **Webhook Secret**: Leave blank (uses HMAC Key by default)
 4. Click **Save changes**
 
-## Step 5: Configure Webhooks
+## Multi-Currency Setup
 
-1. In your GMPays dashboard, go to **Webhooks** or **Notifications**
-2. Add a new webhook with this URL:
-   ```
-   https://yourdomain.com/wp-json/gmpays/v1/webhook
-   ```
-3. Select the following events:
-   - Payment Success
-   - Payment Failed
-   - Payment Cancelled
-   - Refund Processed
-4. Save the webhook configuration
+If your store uses currencies other than USD:
 
-## Step 6: Configure Currency (if not using USD)
+### Step 1: Install WooCommerce Multi Currency
 
-Since GMPays processes payments in USD, you need to configure currency conversion:
+1. Go to **Plugins → Add New**
+2. Search for "WooCommerce Multi Currency"
+3. Install and activate the plugin
 
-### Using WooCommerce Multi Currency:
-1. Install and activate **WooCommerce Multi Currency** plugin
-2. Go to **WooCommerce → Multi Currency**
-3. Add USD to your currency list
-4. Set appropriate exchange rates
-5. The GMPays gateway will automatically convert prices to USD
+### Step 2: Configure Currency Settings
 
-### Using USD as Base Currency:
-1. Go to **WooCommerce → Settings → General**
-2. Set **Currency** to "US Dollar (USD)"
+1. Go to **WooCommerce → Multi Currency**
+2. Enable USD as a currency
+3. Set up exchange rates for your local currencies
+4. Configure display options
 
-## Step 7: Test the Integration
+### Step 3: Verify Integration
 
-### Test Mode
-1. Ensure **Test Mode** is enabled in gateway settings
-2. Create a test order
-3. Select "Credit Card (GMPays)" at checkout
-4. Complete the test payment on GMPays payment page
-5. Verify order status updates correctly
+The GMPays gateway will automatically:
+- Display prices in customer's selected currency
+- Convert amounts to USD for payment processing
+- Update order totals with converted amounts
 
-### Test Cards (if provided by GMPays)
-Use GMPays test card numbers for testing different scenarios:
-- Successful payment
-- Failed payment
-- 3D Secure authentication
+## Testing Your Integration
 
-## Step 8: Go Live
+### Step 1: Create a Test Order
 
-Once testing is complete:
+1. Add a product to your cart
+2. Proceed to checkout
+3. Select "Credit Card (GMPays)" as payment method
+4. You should see the GMPays payment form
 
-1. Obtain live API credentials from GMPays
-2. Disable **Test Mode** in plugin settings
-3. Enter your **Live API Key** and **Live HMAC Key**
-4. Update webhook URLs in GMPays dashboard if needed
-5. Place a small real order to confirm everything works
+### Step 2: Process a Test Payment
+
+GMPays processes all payments in production mode. To test:
+
+1. Use a real credit card for a small amount
+2. Complete the payment process
+3. Verify the order status updates correctly
+
+### Step 3: Verify Webhook Communication
+
+1. Check that order status updates automatically
+2. Review debug logs for webhook notifications
+3. Confirm payment details appear in order admin
+
+### Step 4: Test Order Management
+
+1. View the order in **WooCommerce → Orders**
+2. Check GMPays payment details in the order meta box
+3. Verify transaction ID is recorded
 
 ## Troubleshooting
 
-### Common Issues
+### Gateway Not Appearing at Checkout
 
-**Gateway not appearing at checkout:**
-- Verify WooCommerce is active
-- Check API credentials are entered correctly
-- Ensure at least one shipping zone is configured
-- Check if currency is supported
+**Possible Causes:**
+- Plugin not activated
+- Gateway not enabled in settings
+- Missing credentials
 
-**Payment failures:**
-- Enable debug logging in plugin settings
-- Check logs at **WooCommerce → Status → Logs**
-- Look for "gmpays" log entries
-- Verify webhook URL is accessible
+**Solutions:**
+1. Verify plugin is activated
+2. Check gateway is enabled in settings
+3. Ensure Project ID and HMAC Key are entered
+4. Clear WordPress cache
 
-**Currency conversion issues:**
-- Ensure WooCommerce Multi Currency is properly configured
-- Verify USD is in the currency list
-- Check exchange rates are up to date
+### Payment Failures
 
-### Debug Mode
+**Error: "Payment gateway configuration error"**
+- Verify Project ID is correct
+- Regenerate and update HMAC Key
+- Check debug logs for specific errors
 
-To enable detailed logging:
-1. Go to gateway settings
-2. Enable **Debug Log**
-3. Reproduce the issue
-4. Check logs at **WooCommerce → Status → Logs → gmpays**
+**Error: "Currency not supported"**
+- Install WooCommerce Multi Currency plugin
+- Ensure USD is enabled
+- Check currency conversion settings
 
-## Support
+### Webhook Issues
 
-For technical support:
-- **Plugin Issues**: Contact ElGrupito support
-- **GMPays API**: Contact GMPays support at support@gmpays.com
-- **Documentation**: Visit [GMPays API Docs](https://cp.gmpays.com/apidoc)
+**Orders Not Updating Automatically:**
+1. Verify webhook URL in GMPays control panel:
+   ```
+   https://yourdomain.com/wp-json/gmpays/v1/webhook
+   ```
+2. Check SSL certificate is valid
+3. Review webhook logs in debug mode
+4. Ensure WordPress REST API is enabled
+
+**Signature Verification Failures:**
+- Regenerate HMAC Key in GMPays
+- Update key in WooCommerce settings
+- Ensure no extra spaces in credentials
+
+### Debug Information
+
+Enable debug logging to troubleshoot:
+
+1. **Enable Debug Mode**
+   - Go to gateway settings
+   - Check "Enable logging"
+   - Save changes
+
+2. **View Logs**
+   - Navigate to **WooCommerce → Status → Logs**
+   - Select log file starting with `gmpays`
+   - Review for error messages
+
+3. **Common Log Entries**
+   - `SDK initialized successfully` - Good connection
+   - `Missing required credentials` - Check Project ID/HMAC Key
+   - `Signature verification failed` - HMAC Key mismatch
+   - `Invoice created successfully` - Payment initiated
+
+## Security Best Practices
+
+1. **Keep Credentials Secure**
+   - Never share HMAC Key
+   - Regenerate keys if compromised
+   - Use strong passwords for GMPays account
+
+2. **SSL Certificate**
+   - Ensure SSL is properly configured
+   - Use HTTPS for all pages
+   - Keep certificate up to date
+
+3. **Regular Updates**
+   - Keep WordPress updated
+   - Update WooCommerce regularly
+   - Monitor for plugin updates
+
+4. **Monitor Transactions**
+   - Review orders regularly
+   - Check for unusual patterns
+   - Enable admin notifications
+
+## Getting Help
+
+If you encounter issues:
+
+1. **Check Documentation**
+   - Review this installation guide
+   - Read the [README](README.md) file
+   - Check [GMPays API docs](https://cp.gmpays.com/apidoc)
+
+2. **Debug Mode**
+   - Enable logging in settings
+   - Review error messages
+   - Check webhook responses
+
+3. **Support Channels**
+   - Open [GitHub issue](https://github.com/unclemimo/gmpays-woocommerce-gateway/issues)
+   - Contact GMPays support for account issues
+   - WooCommerce community forums
+
+## Next Steps
+
+After successful installation:
+
+1. **Process Test Transaction**
+   - Make a small test purchase
+   - Verify payment completes
+   - Check order status updates
+
+2. **Configure Additional Settings**
+   - Set up email notifications
+   - Customize checkout messages
+   - Configure order statuses
+
+3. **Monitor Performance**
+   - Review transaction logs
+   - Check conversion rates
+   - Monitor for errors
 
 ---
 
-## Español
-
-# Guía de Instalación para GMPays WooCommerce Gateway
-
-## Requisitos Previos
-
-Antes de instalar GMPays WooCommerce Gateway, asegúrate de tener:
-
-1. **WordPress 5.0+** instalado
-2. **WooCommerce 5.0+** instalado y activado
-3. **PHP 7.4+** o superior
-4. **WooCommerce Multi Currency** plugin (recomendado para tiendas que no usan USD)
-5. **Cuenta GMPays** con credenciales API aprobadas
-
-## Paso 1: Instalar Dependencias
-
-El plugin utiliza el SDK PHP de GMPays. Instálalo usando Composer:
-
-```bash
-cd wp-content/plugins/gmpays-woocommerce-gateway
-composer install
-```
-
-Si no tienes Composer, descárgalo desde [getcomposer.org](https://getcomposer.org/).
-
-## Paso 2: Subir y Activar el Plugin
-
-### Método 1: Carga Manual
-1. Sube la carpeta `gmpays-woocommerce-gateway` a `/wp-content/plugins/`
-2. Ve a **Administrador WordPress → Plugins**
-3. Encuentra "GMPays WooCommerce Payment Gateway" y haz clic en **Activar**
-
-### Método 2: Carga ZIP
-1. Comprime la carpeta del plugin en un archivo ZIP
-2. Ve a **Administrador WordPress → Plugins → Añadir nuevo**
-3. Haz clic en **Subir plugin** y selecciona tu archivo ZIP
-4. Haz clic en **Instalar ahora** y luego **Activar**
-
-## Paso 3: Obtener Credenciales de GMPays
-
-1. Inicia sesión en tu [cuenta GMPays](https://cp.gmpays.com)
-2. Navega a **Configuración API** o **Integración**
-3. Obtén las siguientes credenciales:
-   - **ID de Proyecto**: Tu identificador único de proyecto
-   - **Clave API**: Tu clave de autenticación API
-   - **Clave HMAC**: Tu clave de verificación de firma
-4. Anota las URLs del entorno:
-   - **Pruebas**: `https://checkout.pay.gmpays.com`
-   - **Producción**: `https://checkout.gmpays.com`
-
-## Paso 4: Configurar el Plugin
-
-1. Ve a **WooCommerce → Ajustes → Pagos**
-2. Encuentra **Tarjeta de Crédito (GMPays)** y haz clic en **Gestionar**
-3. Configura los siguientes ajustes:
-
-### Configuración Básica
-- **Activar/Desactivar**: Marca para activar la pasarela
-- **Título**: Nombre mostrado en el checkout (ej., "Tarjeta de Crédito")
-- **Descripción**: Descripción del método de pago para clientes
-
-### Configuración API
-- **Modo de Prueba**: Activar para pruebas (recomendado inicialmente)
-- **ID de Proyecto**: Ingresa tu ID de Proyecto GMPays
-- **Clave API de Prueba**: Tu clave API sandbox
-- **Clave HMAC de Prueba**: Tu clave HMAC sandbox
-- **Clave API en Vivo**: Tu clave API de producción (cuando estés listo)
-- **Clave HMAC en Vivo**: Tu clave HMAC de producción (cuando estés listo)
-
-### Configuración Avanzada
-- **Acción de Pago**: Elige "Capturar" o "Solo Autorizar"
-- **Registro de Depuración**: Activar para solución de problemas
-
-4. Haz clic en **Guardar cambios**
-
-## Paso 5: Configurar Webhooks
-
-1. En tu panel de GMPays, ve a **Webhooks** o **Notificaciones**
-2. Añade un nuevo webhook con esta URL:
-   ```
-   https://tudominio.com/wp-json/gmpays/v1/webhook
-   ```
-3. Selecciona los siguientes eventos:
-   - Pago Exitoso
-   - Pago Fallido
-   - Pago Cancelado
-   - Reembolso Procesado
-4. Guarda la configuración del webhook
-
-## Paso 6: Configurar Moneda (si no usas USD)
-
-Como GMPays procesa pagos en USD, necesitas configurar la conversión de moneda:
-
-### Usando WooCommerce Multi Currency:
-1. Instala y activa el plugin **WooCommerce Multi Currency**
-2. Ve a **WooCommerce → Multi Currency**
-3. Añade USD a tu lista de monedas
-4. Establece las tasas de cambio apropiadas
-5. La pasarela GMPays convertirá automáticamente los precios a USD
-
-### Usando USD como Moneda Base:
-1. Ve a **WooCommerce → Ajustes → General**
-2. Establece **Moneda** en "Dólar estadounidense (USD)"
-
-## Paso 7: Probar la Integración
-
-### Modo de Prueba
-1. Asegúrate de que el **Modo de Prueba** esté activado en la configuración
-2. Crea un pedido de prueba
-3. Selecciona "Tarjeta de Crédito (GMPays)" en el checkout
-4. Completa el pago de prueba en la página de pago de GMPays
-5. Verifica que el estado del pedido se actualice correctamente
-
-### Tarjetas de Prueba (si GMPays las proporciona)
-Usa los números de tarjeta de prueba de GMPays para diferentes escenarios:
-- Pago exitoso
-- Pago fallido
-- Autenticación 3D Secure
-
-## Paso 8: Poner en Producción
-
-Una vez completadas las pruebas:
-
-1. Obtén credenciales de producción de GMPays
-2. Desactiva el **Modo de Prueba** en la configuración del plugin
-3. Ingresa tu **Clave API en Vivo** y **Clave HMAC en Vivo**
-4. Actualiza las URLs de webhook en el panel de GMPays si es necesario
-5. Realiza un pedido real pequeño para confirmar que todo funciona
-
-## Solución de Problemas
-
-### Problemas Comunes
-
-**La pasarela no aparece en el checkout:**
-- Verifica que WooCommerce esté activo
-- Comprueba que las credenciales API estén ingresadas correctamente
-- Asegúrate de tener al menos una zona de envío configurada
-- Verifica si la moneda es compatible
-
-**Fallos en el pago:**
-- Activa el registro de depuración en la configuración del plugin
-- Revisa los registros en **WooCommerce → Estado → Registros**
-- Busca entradas de registro "gmpays"
-- Verifica que la URL del webhook sea accesible
-
-**Problemas de conversión de moneda:**
-- Asegúrate de que WooCommerce Multi Currency esté configurado correctamente
-- Verifica que USD esté en la lista de monedas
-- Comprueba que las tasas de cambio estén actualizadas
-
-### Modo de Depuración
-
-Para activar el registro detallado:
-1. Ve a la configuración de la pasarela
-2. Activa **Registro de Depuración**
-3. Reproduce el problema
-4. Revisa los registros en **WooCommerce → Estado → Registros → gmpays**
-
-## Soporte
-
-Para soporte técnico:
-- **Problemas del Plugin**: Contacta al soporte de ElGrupito
-- **API de GMPays**: Contacta al soporte de GMPays en support@gmpays.com
-- **Documentación**: Visita [Documentación API GMPays](https://cp.gmpays.com/apidoc)
+**Need Help?** Open an issue on [GitHub](https://github.com/unclemimo/gmpays-woocommerce-gateway/issues)

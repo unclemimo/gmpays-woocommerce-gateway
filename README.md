@@ -1,67 +1,89 @@
 # GMPays WooCommerce Payment Gateway
 
-A comprehensive WooCommerce payment gateway plugin that integrates GMPays payment processor for international credit card processing with multi-currency support.
+![Version](https://img.shields.io/badge/version-1.1.0-blue.svg)
+![WooCommerce](https://img.shields.io/badge/WooCommerce-4.0%2B-purple.svg)
+![WordPress](https://img.shields.io/badge/WordPress-5.0%2B-blue.svg)
+![PHP](https://img.shields.io/badge/PHP-7.2%2B-777BB4.svg)
+
+A robust WooCommerce payment gateway plugin for processing international credit card payments through GMPays payment processor, specifically designed for Latin American e-commerce.
 
 ## 🌟 Features
 
-- **International Credit Card Processing**: Accept major credit cards (Visa, MasterCard, American Express, etc.)
-- **Multi-Currency Support**: Full integration with WooCommerce Multi Currency plugin
-- **Automatic Currency Conversion**: Converts local currency to USD for GMPays processing
-- **Secure Webhook Integration**: Real-time order status updates via webhooks
-- **Refund Support**: Process refunds directly from WooCommerce admin
-- **Multilingual**: Spanish and English language support
-- **Modular Architecture**: Designed to easily add more payment methods in the future
-- **Debug Mode**: Comprehensive logging for troubleshooting
-- **Test Mode**: Sandbox environment support for testing
+- ✅ **International Credit Card Processing** - Accept Visa, MasterCard, American Express, and more
+- 💱 **Multi-Currency Support** - Automatic currency conversion to USD using WooCommerce Multi Currency plugin
+- 🌍 **Localization Ready** - Spanish and English translations included
+- 🔒 **Secure Webhooks** - HMAC signature verification for payment notifications
+- 📊 **Comprehensive Logging** - Detailed debug logs for troubleshooting
+- 🎨 **Modern Architecture** - Modular design for easy extension with additional payment methods
 
 ## 📋 Requirements
 
 - WordPress 5.0 or higher
-- WooCommerce 5.0 or higher
-- PHP 7.4 or higher
-- SSL Certificate (required for production)
-- GMPays merchant account with API credentials
-- Composer (for dependency management)
+- WooCommerce 4.0 or higher
+- PHP 7.2 or higher
+- [WooCommerce Multi Currency](https://wordpress.org/plugins/woocommerce-multi-currency/) plugin (recommended for non-USD stores)
+- GMPays merchant account
 
 ## 🚀 Installation
 
-See [INSTALLATION.md](INSTALLATION.md) for detailed installation instructions in English and Spanish.
+### From GitHub Release
 
-### Quick Start
+1. Download the latest release ZIP file from [GitHub Releases](https://github.com/unclemimo/gmpays-woocommerce-gateway/releases)
+2. In WordPress admin, go to **Plugins → Add New → Upload Plugin**
+3. Select the downloaded ZIP file and click **Install Now**
+4. Click **Activate Plugin**
 
-1. Install dependencies:
-```bash
-cd wp-content/plugins/gmpays-woocommerce-gateway
-composer install
-```
+### Manual Installation
 
-2. Activate the plugin in WordPress Admin
+1. Clone or download this repository
+2. If installing from source, install dependencies:
+   ```bash
+   composer install --no-dev
+   ```
+3. Upload the `gmpays-woocommerce-gateway` folder to `/wp-content/plugins/`
+4. Activate the plugin through the WordPress admin panel
 
-3. Configure at **WooCommerce → Settings → Payments → Credit Card (GMPays)**
+## ⚙️ Configuration
 
-4. Enter your GMPays API credentials
+### 1. Obtain GMPays Credentials
 
-5. Configure webhooks in your GMPays dashboard
+1. Log in to your GMPays control panel at [cp.gmpays.com](https://cp.gmpays.com)
+2. Note your **Project ID** (shown as "ID IN PROJECT")
+3. Generate or regenerate your **HMAC Key** using the button in the control panel
 
-## 🔧 Configuration
+### 2. Configure Plugin Settings
 
-### API Credentials
+1. Navigate to **WooCommerce → Settings → Payments**
+2. Find **Credit Card (GMPays)** and click **Manage**
+3. Configure the following:
 
-Obtain from your GMPays dashboard:
-- **Project ID**: Your unique project identifier
-- **API Key**: Authentication key for API requests
-- **HMAC Key**: Key for signature verification
+#### API Credentials
+- **Project ID**: Your GMPays Project ID (e.g., `603`)
+- **HMAC Key**: Your GMPays HMAC Key from the control panel
+- **Webhook Secret** (Optional): Leave blank to use HMAC key for webhook verification
 
-### Webhook Setup
+### 3. Configure GMPays Webhook URLs
 
-Configure webhook URL in GMPays:
-```
-https://yourdomain.com/wp-json/gmpays/v1/webhook
-```
+In your GMPays control panel, configure these URLs:
 
-### Currency Configuration
+- **Success URL (URL перенаправления пользователя в случае успешной оплаты)**:
+  ```
+  https://yourdomain.com/checkout/order-received/
+  ```
 
-For non-USD stores, install and configure WooCommerce Multi Currency plugin to enable automatic currency conversion to USD.
+- **Failure URL (URL перенаправления пользователя в случае неуспешной оплаты)**:
+  ```
+  https://yourdomain.com/checkout/
+  ```
+
+- **Notification URL (URL для оповещений о выплатах)**:
+  ```
+  https://yourdomain.com/wp-json/gmpays/v1/webhook
+  ```
+
+### 4. Currency Configuration
+
+For non-USD stores, install and configure [WooCommerce Multi Currency](https://docs.villatheme.com/?item=woocommerce-multi-currency) plugin to enable automatic currency conversion to USD.
 
 ## 💳 Supported Payment Methods
 
@@ -72,7 +94,7 @@ Future support planned:
 - PIX (Brazil)
 - SPEI (Mexico)
 - PSE (Colombia)
-- Local payment methods for Latin America
+- Other local payment methods for Latin America
 
 ## 🌍 Multi-Currency Support
 
@@ -94,25 +116,10 @@ The plugin seamlessly integrates with WooCommerce Multi Currency plugin:
 
 ## 🔐 Security Features
 
-- **HMAC Signature Verification**: All webhooks are verified using HMAC-MD5 signatures
-- **SSL/TLS Required**: Enforces secure connections in production
+- **HMAC Signature Verification**: All webhooks are verified using HMAC-SHA256 signatures
+- **SSL/TLS Required**: Enforces secure connections
 - **PCI Compliance**: Payment card data is handled by GMPays's PCI-compliant infrastructure
 - **Secure API Communication**: All API calls use HTTPS with authentication
-
-## 🧪 Testing
-
-### Test Mode
-
-1. Enable **Test Mode** in plugin settings
-2. Use GMPays sandbox credentials
-3. Process test payments without real transactions
-4. Check logs for debugging information
-
-### Debug Logging
-
-Enable debug mode to log all GMPays interactions:
-- Location: **WooCommerce → Status → Logs → gmpays**
-- Includes API requests, responses, and webhook data
 
 ## 📝 Order Management
 
@@ -123,14 +130,14 @@ The plugin automatically updates order statuses:
 - **Processing**: Payment successful
 - **Failed**: Payment failed
 - **Cancelled**: Payment cancelled by customer
-- **Refunded**: Refund processed
+- **On Hold**: Awaiting payment confirmation
 
 ### Admin Features
 
 - View GMPays payment details in order admin
-- Process refunds directly from WooCommerce
 - Access transaction IDs and payment status
 - Debug information available in meta box
+- Comprehensive logging for troubleshooting
 
 ## 🌐 Localization
 
@@ -138,144 +145,99 @@ The plugin includes translations for:
 - 🇬🇧 English
 - 🇪🇸 Spanish (Latin America)
 
-Translation files are located in the `/languages` directory.
+## 🐛 Debugging
 
-## 🏗️ Architecture
+### Enable Debug Logging
 
-### Modular Design
+1. In plugin settings, check **Enable logging**
+2. View logs at **WooCommerce → Status → Logs**
+3. Select log file starting with `gmpays`
 
-The plugin is architected for extensibility:
+### Common Issues
+
+#### Gateway Not Appearing at Checkout
+- Ensure plugin is activated
+- Verify Project ID and HMAC Key are configured
+- Check that WooCommerce Multi Currency is installed (if using non-USD currency)
+
+#### Payment Failures
+- Verify webhook URLs are correctly configured in GMPays control panel
+- Check debug logs for specific error messages
+- Ensure SSL certificate is valid
+
+#### Currency Conversion Issues
+- Install WooCommerce Multi Currency plugin
+- Configure exchange rates in the plugin
+- Ensure USD is enabled as a currency
+
+## 🔄 Webhook Events
+
+The plugin handles the following webhook events from GMPays:
+- Payment success confirmations
+- Payment failure notifications
+- Payment status updates
+
+## 📦 Plugin Structure
 
 ```
 gmpays-woocommerce-gateway/
 ├── includes/
-│   ├── class-wc-gateway-gmpays-credit-card.php  # Credit card gateway
-│   ├── class-gmpays-api-client.php              # API communication
-│   ├── class-gmpays-currency-manager.php        # Currency conversion
+│   ├── class-wc-gateway-gmpays-credit-card.php  # Main gateway class
+│   ├── class-gmpays-api-client.php              # GMPays API wrapper
 │   ├── class-gmpays-webhook-handler.php         # Webhook processing
-│   └── [Future payment method classes]
+│   ├── class-gmpays-currency-manager.php        # Currency conversion
+│   ├── class-gmpays-activator.php               # Plugin activation
+│   └── class-gmpays-deactivator.php             # Plugin deactivation
 ├── assets/
-│   └── js/gmpays-checkout.js                    # Frontend scripts
-├── languages/                                    # Translations
-└── composer.json                                 # Dependencies
+│   └── js/
+│       └── gmpays-checkout.js                   # Frontend JavaScript
+├── languages/                                    # Translation files
+├── vendor/                                       # Composer dependencies
+└── gmpays-woocommerce-gateway.php              # Main plugin file
 ```
-
-### Adding New Payment Methods
-
-To add a new GMPays payment method:
-
-1. Create new gateway class extending `WC_Payment_Gateway`
-2. Add to `includes/` directory
-3. Register in main plugin file
-4. Configure specific settings and behavior
-
-Example structure for future payment methods:
-- `class-wc-gateway-gmpays-pix.php`
-- `class-wc-gateway-gmpays-spei.php`
-- `class-wc-gateway-gmpays-pse.php`
-
-## 🔄 Webhook Events
-
-The plugin handles the following webhook events:
-- `payment` / `invoice.paid`: Payment successful
-- `payment.failed` / `invoice.failed`: Payment failed
-- `payment.cancelled` / `invoice.cancelled`: Payment cancelled
-- `refund` / `invoice.refunded`: Refund processed
-
-## 🛠️ API Integration
-
-### GMPays API Endpoints
-
-The plugin integrates with GMPays API v1:
-- Create Invoice: `POST /api/invoice`
-- Check Status: `POST /api/invoice/status`
-- Process Refund: `POST /api/invoice/refund`
-- Cancel Invoice: `POST /api/invoice/cancel`
-
-### Authentication
-
-Uses Bearer token authentication with HMAC-MD5 signature verification.
-
-## 📊 Reporting
-
-Payment data is stored as order metadata:
-- `_gmpays_invoice_id`: GMPays invoice identifier
-- `_gmpays_transaction_id`: Transaction identifier
-- `_gmpays_payment_status`: Payment status
-- `_gmpays_payment_completed_at`: Completion timestamp
 
 ## 🤝 Contributing
 
-### Development Setup
+Contributions are welcome! Please feel free to submit a Pull Request.
 
-1. Clone the repository
-2. Install dependencies: `composer install`
-3. Follow WordPress coding standards
-4. Test thoroughly before submitting PR
-
-### Code Standards
-
-- Follow WordPress Coding Standards
-- Add inline documentation
-- Include unit tests for new features
-- Update documentation as needed
+1. Fork the repository
+2. Create your feature branch (`git checkout -b feature/AmazingFeature`)
+3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
+4. Push to the branch (`git push origin feature/AmazingFeature`)
+5. Open a Pull Request
 
 ## 📄 License
 
-This plugin is licensed under GPL v2 or later.
+This plugin is licensed under the GPL v2 or later.
 
 ## 🆘 Support
 
-### For Plugin Support
-- Contact ElGrupito development team
-- Check the [INSTALLATION.md](INSTALLATION.md) guide
-- Review debug logs for troubleshooting
+For issues or questions:
+1. Check the [documentation](https://github.com/unclemimo/gmpays-woocommerce-gateway)
+2. Review [common issues](#common-issues)
+3. Open a [GitHub issue](https://github.com/unclemimo/gmpays-woocommerce-gateway/issues)
 
-### For GMPays API Support
-- Email: support@gmpays.com
-- Documentation: [https://cp.gmpays.com/apidoc](https://cp.gmpays.com/apidoc)
+## 📚 Resources
 
-### For WooCommerce Support
-- Documentation: [https://docs.woocommerce.com](https://docs.woocommerce.com)
-- Community Forums: [https://wordpress.org/support/plugin/woocommerce/](https://wordpress.org/support/plugin/woocommerce/)
+- [GMPays API Documentation](https://cp.gmpays.com/apidoc)
+- [WooCommerce Payment Gateway API](https://woocommerce.github.io/code-reference/classes/WC-Payment-Gateway.html)
+- [WooCommerce Multi Currency Documentation](https://docs.villatheme.com/?item=woocommerce-multi-currency)
 
-## 📈 Changelog
+## 🏷️ Version History
 
-### Version 1.0.0 (Initial Release)
-- Credit card payment processing via GMPays
-- Multi-currency support with automatic USD conversion
-- Webhook integration for real-time updates
-- Refund support
-- Spanish and English localization
-- Debug logging
-- Test/Production mode support
+### v1.1.0 (Latest)
+- Updated authentication to use Project ID and HMAC Key only
+- Removed sandbox mode (not available in GMPays)
+- Improved webhook configuration instructions
+- Better integration with GMPays SDK
 
-## 🔮 Roadmap
-
-### Version 1.1.0 (Planned)
-- PIX payment method (Brazil)
-- SPEI payment method (Mexico)
-- Enhanced currency conversion options
-
-### Version 1.2.0 (Planned)
-- PSE payment method (Colombia)
-- Bank transfer support
-- Recurring payments support
-
-### Version 2.0.0 (Future)
-- Mobile wallet integrations
-- Advanced fraud detection
-- Enhanced reporting dashboard
-
-## 👥 Credits
-
-Developed by ElGrupito Development Team for [ElGrupito.com](https://elgrupito.com)
-
-Special thanks to:
-- GMPays for payment processing services
-- WooCommerce team for the e-commerce platform
-- WordPress community for continuous support
+### v1.0.0
+- Initial release
+- Credit card payment processing
+- Multi-currency support
+- Webhook handling
+- Spanish/English localization
 
 ---
 
-**Note**: This plugin requires proper configuration of GMPays API credentials and may require additional setup for currency conversion. Please refer to the installation guide for detailed instructions.
+**Developed for [ElGrupito.com](https://elgrupito.com)** 🛒

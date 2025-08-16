@@ -44,17 +44,15 @@ class WC_Gateway_GMPays_Credit_Card extends WC_Payment_Gateway {
         $this->init_settings();
         
         // Define user settings
-        $this->title              = $this->get_option('title', __('Credit Card', 'gmpays-woocommerce-gateway'));
+        $this->title              = $this->get_option('title', __('Credit Card (GMPays)', 'gmpays-woocommerce-gateway'));
         $this->description        = $this->get_option('description', __('Pay securely with your credit card', 'gmpays-woocommerce-gateway'));
         $this->enabled            = $this->get_option('enabled');
-        $this->testmode           = 'yes' === $this->get_option('testmode', 'no');
         $this->project_id         = $this->get_option('project_id');
-        $this->api_key            = $this->testmode ? $this->get_option('test_api_key') : $this->get_option('live_api_key');
-        $this->hmac_key           = $this->testmode ? $this->get_option('test_hmac_key') : $this->get_option('live_hmac_key');
-        $this->payment_page_url   = $this->testmode ? $this->get_option('test_payment_page_url') : $this->get_option('live_payment_page_url');
+        $this->hmac_key           = $this->get_option('hmac_key');
+        $this->webhook_secret     = $this->get_option('webhook_secret', $this->hmac_key); // Use HMAC key as default for webhooks
         
         // Initialize API client and currency manager
-        $this->api_client = new GMPays_API_Client($this->project_id, $this->api_key, $this->hmac_key, $this->testmode);
+        $this->api_client = new GMPays_API_Client($this->project_id, $this->hmac_key);
         $this->currency_manager = new GMPays_Currency_Manager();
         
         // Hooks
@@ -81,7 +79,7 @@ class WC_Gateway_GMPays_Credit_Card extends WC_Payment_Gateway {
                 'title'       => __('Title', 'gmpays-woocommerce-gateway'),
                 'type'        => 'text',
                 'description' => __('This controls the title which the user sees during checkout.', 'gmpays-woocommerce-gateway'),
-                'default'     => __('Credit Card', 'gmpays-woocommerce-gateway'),
+                'default'     => __('Credit Card (GMPays)', 'gmpays-woocommerce-gateway'),
                 'desc_tip'    => true,
             ),
             'description' => array(
@@ -91,81 +89,46 @@ class WC_Gateway_GMPays_Credit_Card extends WC_Payment_Gateway {
                 'default'     => __('Pay securely using your credit card through GMPays secure payment gateway.', 'gmpays-woocommerce-gateway'),
                 'desc_tip'    => true,
             ),
-            'testmode' => array(
-                'title'       => __('Test mode', 'gmpays-woocommerce-gateway'),
-                'label'       => __('Enable Test Mode', 'gmpays-woocommerce-gateway'),
-                'type'        => 'checkbox',
-                'description' => __('Place the payment gateway in test mode using test API keys.', 'gmpays-woocommerce-gateway'),
-                'default'     => 'yes',
-                'desc_tip'    => true,
+            'api_credentials_title' => array(
+                'title'       => __('GMPays API Credentials', 'gmpays-woocommerce-gateway'),
+                'type'        => 'title',
+                'description' => __('Enter your GMPays credentials from your control panel at cp.gmpays.com', 'gmpays-woocommerce-gateway'),
             ),
             'project_id' => array(
                 'title'       => __('Project ID', 'gmpays-woocommerce-gateway'),
                 'type'        => 'text',
-                'description' => __('Your GMPays Project ID (same for test and live modes).', 'gmpays-woocommerce-gateway'),
+                'description' => __('Your GMPays Project ID (shown as "ID IN PROJECT" in your GMPays control panel). For example: 603', 'gmpays-woocommerce-gateway'),
                 'default'     => '',
                 'desc_tip'    => true,
+                'placeholder' => '603',
             ),
-            'test_api_key' => array(
-                'title'       => __('Test API Key', 'gmpays-woocommerce-gateway'),
+            'hmac_key' => array(
+                'title'       => __('HMAC Key', 'gmpays-woocommerce-gateway'),
                 'type'        => 'password',
-                'description' => __('Your GMPays test API key.', 'gmpays-woocommerce-gateway'),
+                'description' => __('Your GMPays HMAC Key. Generate this by clicking "Regenerate HMAC Key" in your GMPays control panel.', 'gmpays-woocommerce-gateway'),
                 'default'     => '',
                 'desc_tip'    => true,
+                'placeholder' => '',
             ),
-            'test_hmac_key' => array(
-                'title'       => __('Test HMAC Key', 'gmpays-woocommerce-gateway'),
-                'type'        => 'password',
-                'description' => __('Your GMPays test HMAC key for signature verification.', 'gmpays-woocommerce-gateway'),
-                'default'     => '',
-                'desc_tip'    => true,
-            ),
-            'test_payment_page_url' => array(
-                'title'       => __('Test Payment Page URL', 'gmpays-woocommerce-gateway'),
-                'type'        => 'text',
-                'description' => __('GMPays test payment page URL (e.g., https://checkout.pay.gmpays.com)', 'gmpays-woocommerce-gateway'),
-                'default'     => 'https://checkout.pay.gmpays.com',
-                'desc_tip'    => true,
-            ),
-            'live_api_key' => array(
-                'title'       => __('Live API Key', 'gmpays-woocommerce-gateway'),
-                'type'        => 'password',
-                'description' => __('Your GMPays live API key.', 'gmpays-woocommerce-gateway'),
-                'default'     => '',
-                'desc_tip'    => true,
-            ),
-            'live_hmac_key' => array(
-                'title'       => __('Live HMAC Key', 'gmpays-woocommerce-gateway'),
-                'type'        => 'password',
-                'description' => __('Your GMPays live HMAC key for signature verification.', 'gmpays-woocommerce-gateway'),
-                'default'     => '',
-                'desc_tip'    => true,
-            ),
-            'live_payment_page_url' => array(
-                'title'       => __('Live Payment Page URL', 'gmpays-woocommerce-gateway'),
-                'type'        => 'text',
-                'description' => __('GMPays live payment page URL (e.g., https://checkout.gmpays.com)', 'gmpays-woocommerce-gateway'),
-                'default'     => 'https://checkout.gmpays.com',
-                'desc_tip'    => true,
-            ),
-            'webhook_info' => array(
+            'webhook_configuration' => array(
                 'title'       => __('Webhook Configuration', 'gmpays-woocommerce-gateway'),
                 'type'        => 'title',
                 'description' => sprintf(
-                    __('Configure this webhook URL in your GMPays account: %s', 'gmpays-woocommerce-gateway'),
-                    '<br><code>' . home_url('/wp-json/gmpays/v1/webhook') . '</code>'
+                    __('Configure the following URLs in your GMPays control panel:<br>
+                    • Success URL: %s<br>
+                    • Failure URL: %s<br>
+                    • Notification URL: %s', 'gmpays-woocommerce-gateway'),
+                    '<code>' . home_url('/checkout/order-received/') . '</code>',
+                    '<code>' . wc_get_checkout_url() . '</code>',
+                    '<code>' . home_url('/wp-json/gmpays/v1/webhook') . '</code>'
                 ),
             ),
-            'payment_action' => array(
-                'title'       => __('Payment Action', 'gmpays-woocommerce-gateway'),
-                'type'        => 'select',
-                'description' => __('Choose whether to capture payment immediately or authorize only.', 'gmpays-woocommerce-gateway'),
-                'default'     => 'sale',
+            'webhook_secret' => array(
+                'title'       => __('Webhook Secret (Optional)', 'gmpays-woocommerce-gateway'),
+                'type'        => 'password',
+                'description' => __('If you want to use a different secret for webhook verification than your HMAC key, enter it here. Otherwise, leave blank to use HMAC key.', 'gmpays-woocommerce-gateway'),
+                'default'     => '',
                 'desc_tip'    => true,
-                'options'     => array(
-                    'sale' => __('Capture (Sale)', 'gmpays-woocommerce-gateway'),
-                    'auth' => __('Authorize Only', 'gmpays-woocommerce-gateway'),
-                ),
             ),
             'debug' => array(
                 'title'       => __('Debug Log', 'gmpays-woocommerce-gateway'),
@@ -204,7 +167,7 @@ class WC_Gateway_GMPays_Credit_Card extends WC_Payment_Gateway {
             return false;
         }
         
-        if (!$this->api_key || !$this->hmac_key || !$this->project_id) {
+        if (!$this->project_id || !$this->hmac_key) {
             return false;
         }
         
