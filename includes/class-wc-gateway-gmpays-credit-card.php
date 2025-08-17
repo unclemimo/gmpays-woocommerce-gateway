@@ -95,8 +95,11 @@ class WC_Gateway_GMPays_Credit_Card extends WC_Payment_Gateway {
         // Handle failed payment returns
         add_action('woocommerce_cart_loaded_from_session', array($this, 'handle_failed_payment_return'));
         
-        // Handle GMPays return URLs
-        add_action('init', array($this, 'handle_gmpays_returns'));
+        // Handle GMPays return URLs - Use proper WooCommerce hooks
+        add_action('woocommerce_thankyou', array($this, 'handle_success_return_thankyou'), 10, 1);
+        add_action('woocommerce_cart_loaded_from_session', array($this, 'handle_failure_cancelled_return'));
+        add_action('woocommerce_before_cart', array($this, 'handle_failure_cancelled_return'));
+        add_action('woocommerce_before_checkout_form', array($this, 'handle_failure_cancelled_return'));
         
         // Add AJAX handlers for admin actions
         add_action('wp_ajax_gmpays_check_status', array($this, 'ajax_check_payment_status'));
@@ -442,46 +445,31 @@ class WC_Gateway_GMPays_Credit_Card extends WC_Payment_Gateway {
     }
     
     /**
-     * Handle GMPays return URLs (success and failure)
+     * Handle successful payment return from GMPays on thank you page
      */
-    public function handle_gmpays_returns() {
-        // Only process on frontend
-        if (is_admin()) {
+    public function handle_success_return_thankyou($order_id) {
+        // Only process if we have GMPays success parameters
+        if (!isset($_GET['gmpays_success']) || !isset($_GET['order_id'])) {
             return;
         }
         
-        // Handle success return from GMPays
-        if (isset($_GET['gmpays_success']) && isset($_GET['order_id'])) {
-            $this->handle_success_return();
+        // Verify order ID matches
+        if (intval($_GET['order_id']) !== $order_id) {
+            return;
         }
         
-        // Handle failure return from GMPays
-        if (isset($_GET['gmpays_failure']) && isset($_GET['order_id'])) {
-            $this->handle_failure_return();
+        if ($this->get_option('debug') === 'yes') {
+            wc_get_logger()->info('GMPays: Processing success return for order ' . $order_id, array('source' => 'gmpays-gateway'));
         }
         
-        // Handle cancelled return from GMPays
-        if (isset($_GET['gmpays_cancelled']) && isset($_GET['order_id'])) {
-            $this->handle_cancelled_return();
-        }
-    }
-    
-    /**
-     * Handle successful payment return from GMPays
-     */
-    private function handle_success_return() {
-        $order_id = intval($_GET['order_id']);
         $order = wc_get_order($order_id);
-        
         if (!$order || $order->get_payment_method() !== 'gmpays_credit_card') {
             return;
         }
         
         // Check if order is already processed
         if ($order->is_paid()) {
-            // Redirect to thank you page
-            wp_redirect($this->get_return_url($order));
-            exit;
+            return;
         }
         
         // Get GMPays transaction details from URL parameters
@@ -531,10 +519,34 @@ class WC_Gateway_GMPays_Credit_Card extends WC_Payment_Gateway {
         if (WC()->cart) {
             WC()->cart->empty_cart();
         }
+    }
+    
+    /**
+     * Handle failed/cancelled payment returns from GMPays
+     */
+    public function handle_failure_cancelled_return() {
+        // Only process on frontend
+        if (is_admin()) {
+            return;
+        }
         
-        // Redirect to thank you page
-        wp_redirect($this->get_return_url($order));
-        exit;
+        // Handle failure return from GMPays
+        if (isset($_GET['gmpays_failure']) && isset($_GET['order_id'])) {
+            if ($this->get_option('debug') === 'yes') {
+                wc_get_logger()->info('GMPays: Processing failure return for order ' . $_GET['order_id'], array('source' => 'gmpays-gateway'));
+            }
+            $this->handle_failure_return();
+            return; // Exit after processing to avoid duplicate processing
+        }
+        
+        // Handle cancelled return from GMPays
+        if (isset($_GET['gmpays_cancelled']) && isset($_GET['order_id'])) {
+            if ($this->get_option('debug') === 'yes') {
+                wc_get_logger()->info('GMPays: Processing cancelled return for order ' . $_GET['order_id'], array('source' => 'gmpays-gateway'));
+            }
+            $this->handle_cancelled_return();
+            return; // Exit after processing to avoid duplicate processing
+        }
     }
     
     /**
