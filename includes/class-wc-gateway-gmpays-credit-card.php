@@ -489,6 +489,11 @@ class WC_Gateway_GMPays_Credit_Card extends WC_Payment_Gateway {
         $amount = isset($_GET['amount']) ? floatval($_GET['amount']) : 0;
         $currency = isset($_GET['currency']) ? sanitize_text_field($_GET['currency']) : 'USD';
         
+        // Also check for invoice parameter (GMPays specific)
+        if (empty($transaction_id) && isset($_GET['invoice'])) {
+            $transaction_id = sanitize_text_field($_GET['invoice']);
+        }
+        
         // Mark order as on-hold (pending confirmation)
         $order->update_status('on-hold', __('Payment received via GMPays - Order placed on hold for confirmation', 'gmpays-woocommerce-gateway'));
         
@@ -547,6 +552,11 @@ class WC_Gateway_GMPays_Credit_Card extends WC_Payment_Gateway {
         $reason = isset($_GET['reason']) ? sanitize_text_field($_GET['reason']) : __('Payment processing failed', 'gmpays-woocommerce-gateway');
         $invoice_id = isset($_GET['invoice_id']) ? sanitize_text_field($_GET['invoice_id']) : '';
         
+        // Also check for invoice parameter (GMPays specific)
+        if (empty($invoice_id) && isset($_GET['invoice'])) {
+            $invoice_id = sanitize_text_field($_GET['invoice']);
+        }
+        
         // Mark order as failed
         $order->update_status('failed', __('Payment failed via GMPays: ' . $reason, 'gmpays-woocommerce-gateway'));
         
@@ -601,11 +611,17 @@ class WC_Gateway_GMPays_Credit_Card extends WC_Payment_Gateway {
             return;
         }
         
+        // Get invoice ID if available
+        $invoice_id = isset($_GET['invoice']) ? sanitize_text_field($_GET['invoice']) : '';
+        
         // Mark order as cancelled
         $order->update_status('cancelled', __('Payment cancelled by customer via GMPays', 'gmpays-woocommerce-gateway'));
         
         // Add public note
         $note = __('Payment cancelled via GMPays.\nCustomer did not complete payment.', 'gmpays-woocommerce-gateway');
+        if (!empty($invoice_id)) {
+            $note .= '\nInvoice ID: ' . $invoice_id;
+        }
         $order->add_order_note($note, false, false);
         
         // Add private note
@@ -886,21 +902,21 @@ class WC_Gateway_GMPays_Credit_Card extends WC_Payment_Gateway {
         $customer_name = $order->get_billing_first_name() . ' ' . $order->get_billing_last_name();
         $customer_email = $order->get_billing_email();
         
-        // Prepare return URLs for GMPays
+        // Prepare return URLs for GMPays - Use proper WooCommerce endpoints
         $success_url = add_query_arg(array(
             'gmpays_success' => '1',
             'order_id' => $order->get_id()
-        ), home_url('/'));
+        ), $this->get_return_url($order));
         
         $failure_url = add_query_arg(array(
             'gmpays_failure' => '1',
             'order_id' => $order->get_id()
-        ), home_url('/'));
+        ), wc_get_cart_url());
         
         $cancel_url = add_query_arg(array(
             'gmpays_cancelled' => '1',
             'order_id' => $order->get_id()
-        ), home_url('/'));
+        ), wc_get_cart_url());
         
         // Prepare invoice data for GMPays API
         $invoice_data = array(

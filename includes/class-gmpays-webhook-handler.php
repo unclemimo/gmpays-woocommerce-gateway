@@ -229,23 +229,31 @@ geivrSfScNQH1mWJuE0DXMobNrhyJpxHRJwXXQyck6TiDM8OETki4PBzjKk/Gsyc
         
         wc_get_logger()->info('Processing GMPays webhook event: ' . $event_type, array('source' => 'gmpays-webhook'));
         
-        // Handle different event types
+        // Handle different event types based on GMPays documentation
         switch ($event_type) {
             case 'payment':
             case 'invoice.paid':
+            case 'Paid': // GMPays status value
                 return self::handle_payment_success($event_data);
                 
             case 'payment.failed':
             case 'invoice.failed':
+            case 'Refused': // GMPays status value
                 return self::handle_payment_failed($event_data);
                 
             case 'payment.cancelled':
             case 'invoice.cancelled':
+            case 'New': // GMPays status value for cancelled/expired
                 return self::handle_payment_cancelled($event_data);
                 
             case 'refund':
             case 'invoice.refunded':
+            case 'Refund': // GMPays status value
                 return self::handle_refund($event_data);
+                
+            case 'Processing': // GMPays status value
+                wc_get_logger()->info('GMPays payment is processing: ' . $event_type, array('source' => 'gmpays-webhook'));
+                return true; // Acknowledge receipt
                 
             default:
                 wc_get_logger()->info('Unhandled GMPays webhook event type: ' . $event_type, array('source' => 'gmpays-webhook'));
@@ -273,10 +281,11 @@ geivrSfScNQH1mWJuE0DXMobNrhyJpxHRJwXXQyck6TiDM8OETki4PBzjKk/Gsyc
             return true;
         }
         
-        // Get invoice/transaction ID
-        $transaction_id = isset($data['invoice']) ? $data['invoice'] : 
+        // Get invoice/transaction ID from various possible fields
+        $transaction_id = isset($data['project_invoice']) ? $data['project_invoice'] : 
+                         (isset($data['invoice']) ? $data['invoice'] : 
                          (isset($data['id']) ? $data['id'] : 
-                         (isset($data['transaction_id']) ? $data['transaction_id'] : ''));
+                         (isset($data['transaction_id']) ? $data['transaction_id'] : '')));
         
         // Complete payment and set order to on-hold (pending confirmation)
         $order->payment_complete($transaction_id);
@@ -343,11 +352,19 @@ geivrSfScNQH1mWJuE0DXMobNrhyJpxHRJwXXQyck6TiDM8OETki4PBzjKk/Gsyc
         // Update order status to failed
         $order->update_status('failed', __('Payment failed via GMPays', 'gmpays-woocommerce-gateway'));
         
+        // Get failure reason and invoice ID
+        $failure_reason = isset($data['reason']) ? $data['reason'] : 
+                         (isset($data['comment']) ? $data['comment'] : 
+                         __('Payment processing error', 'gmpays-woocommerce-gateway'));
+        
+        $invoice_id = isset($data['project_invoice']) ? $data['project_invoice'] : 
+                     (isset($data['invoice']) ? $data['invoice'] : 'N/A');
+        
         // Add detailed failure note (public)
         $note = sprintf(
             __('Payment failed via GMPays.\nInvoice ID: %s\nReason: %s\nPlease contact customer to retry payment.', 'gmpays-woocommerce-gateway'),
-            isset($data['invoice']) ? $data['invoice'] : 'N/A',
-            isset($data['reason']) ? $data['reason'] : __('Payment processing error', 'gmpays-woocommerce-gateway')
+            $invoice_id,
+            $failure_reason
         );
         $order->add_order_note($note, false, false);
         
@@ -355,8 +372,8 @@ geivrSfScNQH1mWJuE0DXMobNrhyJpxHRJwXXQyck6TiDM8OETki4PBzjKk/Gsyc
         $private_note = sprintf(
             __('GMPays Payment Failure - Order #%s payment failed via GMPays. Invoice ID: %s. Reason: %s', 'gmpays-woocommerce-gateway'),
             $order->get_order_number(),
-            isset($data['invoice']) ? $data['invoice'] : 'N/A',
-            isset($data['reason']) ? $data['reason'] : __('Payment processing error', 'gmpays-woocommerce-gateway')
+            $invoice_id,
+            $failure_reason
         );
         $order->add_order_note($private_note, false, true);
         
@@ -392,10 +409,14 @@ geivrSfScNQH1mWJuE0DXMobNrhyJpxHRJwXXQyck6TiDM8OETki4PBzjKk/Gsyc
         // Update order status to cancelled
         $order->update_status('cancelled', __('Payment cancelled via GMPays', 'gmpays-woocommerce-gateway'));
         
+        // Get invoice ID
+        $invoice_id = isset($data['project_invoice']) ? $data['project_invoice'] : 
+                     (isset($data['invoice']) ? $data['invoice'] : 'N/A');
+        
         // Add cancellation note (public)
         $note = sprintf(
             __('Payment cancelled via GMPays.\nInvoice ID: %s\nCustomer did not complete payment.', 'gmpays-woocommerce-gateway'),
-            isset($data['invoice']) ? $data['invoice'] : 'N/A'
+            $invoice_id
         );
         $order->add_order_note($note, false, false);
         
@@ -403,7 +424,7 @@ geivrSfScNQH1mWJuE0DXMobNrhyJpxHRJwXXQyck6TiDM8OETki4PBzjKk/Gsyc
         $private_note = sprintf(
             __('GMPays Payment Cancellation - Order #%s payment was cancelled via GMPays. Invoice ID: %s. Customer did not complete payment.', 'gmpays-woocommerce-gateway'),
             $order->get_order_number(),
-            isset($data['invoice']) ? $data['invoice'] : 'N/A'
+            $invoice_id
         );
         $order->add_order_note($private_note, false, true);
         
@@ -432,13 +453,26 @@ geivrSfScNQH1mWJuE0DXMobNrhyJpxHRJwXXQyck6TiDM8OETki4PBzjKk/Gsyc
             return false;
         }
         
+        // Get refund details
+        $refund_id = isset($data['refund_id']) ? $data['refund_id'] : 
+                    (isset($data['invoice']) ? $data['invoice'] : 'N/A');
+        
+        $refund_amount = isset($data['amount']) ? $data['amount'] : 
+                        (isset($data['net_amount']) ? $data['net_amount'] : 'N/A');
+        
+        $refund_currency = isset($data['currency']) ? strtoupper($data['currency']) : 
+                          (isset($data['currency_project']) ? strtoupper($data['currency_project']) : 'USD');
+        
+        $refund_reason = isset($data['reason']) ? $data['reason'] : 
+                        (isset($data['comment']) ? $data['comment'] : __('No reason provided', 'gmpays-woocommerce-gateway'));
+        
         // Add refund note (public)
         $note = sprintf(
             __('Refund processed via GMPays.\nRefund ID: %s\nAmount: %s %s\nReason: %s', 'gmpays-woocommerce-gateway'),
-            isset($data['refund_id']) ? $data['refund_id'] : 'N/A',
-            isset($data['amount']) ? $data['amount'] : 'N/A',
-            isset($data['currency']) ? strtoupper($data['currency']) : 'USD',
-            isset($data['reason']) ? $data['reason'] : __('No reason provided', 'gmpays-woocommerce-gateway')
+            $refund_id,
+            $refund_amount,
+            $refund_currency,
+            $refund_reason
         );
         $order->add_order_note($note, false, false);
         
@@ -446,10 +480,10 @@ geivrSfScNQH1mWJuE0DXMobNrhyJpxHRJwXXQyck6TiDM8OETki4PBzjKk/Gsyc
         $private_note = sprintf(
             __('GMPays Refund Processed - Order #%s refund processed via GMPays. Refund ID: %s. Amount: %s %s. Reason: %s', 'gmpays-woocommerce-gateway'),
             $order->get_order_number(),
-            isset($data['refund_id']) ? $data['refund_id'] : 'N/A',
-            isset($data['amount']) ? $data['amount'] : 'N/A',
-            isset($data['currency']) ? strtoupper($data['currency']) : 'USD',
-            isset($data['reason']) ? $data['reason'] : __('No reason provided', 'gmpays-woocommerce-gateway')
+            $refund_id,
+            $refund_amount,
+            $refund_currency,
+            $refund_reason
         );
         $order->add_order_note($private_note, false, true);
         
@@ -471,7 +505,15 @@ geivrSfScNQH1mWJuE0DXMobNrhyJpxHRJwXXQyck6TiDM8OETki4PBzjKk/Gsyc
      * @return WC_Order|false Order object or false if not found
      */
     private static function get_order_from_webhook_data($data) {
-        // Try to find order by invoice ID first
+        // Try to find order by project_invoice (GMPays specific field)
+        if (isset($data['project_invoice'])) {
+            $order = wc_get_order($data['project_invoice']);
+            if ($order) {
+                return $order;
+            }
+        }
+        
+        // Try to find order by invoice ID in metadata
         if (isset($data['invoice'])) {
             $orders = wc_get_orders(array(
                 'meta_key' => '_gmpays_invoice_id',
@@ -516,6 +558,9 @@ geivrSfScNQH1mWJuE0DXMobNrhyJpxHRJwXXQyck6TiDM8OETki4PBzjKk/Gsyc
                 }
             }
         }
+        
+        // Log the data structure for debugging
+        wc_get_logger()->warning('Could not find order for GMPays webhook data: ' . json_encode($data), array('source' => 'gmpays-webhook'));
         
         return false;
     }

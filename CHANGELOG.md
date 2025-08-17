@@ -5,6 +5,46 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.1] - 2024-12-19
+
+### 🐛 Critical Bug Fixes
+
+#### Fixed Return URL Redirect Issues
+- **Fixed Incorrect Success Redirects**: Corrected URLs that were redirecting customers to homepage instead of order summary page
+- **Fixed Failure/Cancellation Redirects**: Customers now properly return to cart page instead of homepage
+- **Eliminated Duplicate Return Handling**: Removed conflicting REST API endpoints that were interfering with proper order processing
+
+#### Fixed Order Status Management
+- **Fixed "on-hold" Status Issue**: Orders now properly transition to "on-hold" status when webhooks are processed
+- **Improved Webhook Processing**: Enhanced webhook handler to correctly recognize GMPays payment statuses
+- **Better Order Lookup**: Improved order identification from webhook data using multiple fallback methods
+
+### 🔧 Changed
+- **Consolidated Return Handling**: All return URL processing now handled exclusively by gateway class methods
+- **Updated Webhook Status Recognition**: Added support for GMPays-specific status values (Paid, Refused, New, Processing, Refund)
+- **Enhanced Parameter Handling**: Improved support for GMPays return parameters including `invoice` field
+- **Removed Duplicate Code**: Eliminated conflicting REST API endpoints and duplicate methods
+
+### 📋 Technical Details
+- **Modified Files:**
+  - `includes/class-wc-gateway-gmpays-credit-card.php`: Fixed return URL generation and parameter handling
+  - `gmpays-woocommerce-gateway.php`: Removed duplicate REST endpoints and methods
+  - `includes/class-gmpays-webhook-handler.php`: Enhanced webhook processing and order lookup
+- **Key Changes:**
+  - Success URLs now use `$this->get_return_url($order)` instead of `home_url('/')`
+  - Failure/Cancellation URLs now redirect to `wc_get_cart_url()` instead of homepage
+  - Webhook handler now recognizes GMPays-specific status values
+  - Added support for `project_invoice` field in webhook data
+  - Improved order lookup with multiple fallback methods
+  - Enhanced logging and debugging capabilities
+
+### 📚 Documentation
+- **Added Configuration Guide**: Created `GMPAYS_CONFIGURATION.md` with complete setup instructions
+- **Updated Return URL Configuration**: Clear instructions for configuring GMPays return URLs
+- **Webhook Configuration**: Detailed webhook setup and troubleshooting guide
+
+---
+
 ## [1.4.0] - 2024-12-19
 
 ### ✨ Added
