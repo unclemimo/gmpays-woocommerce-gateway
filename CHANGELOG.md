@@ -5,6 +5,88 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.5] - 2024-12-19
+
+### 🚨 CRITICAL FIXES
+
+#### Complete Return URL Handling Overhaul
+- **Eliminated WordPress Hook Conflicts**: Removed all problematic `init`, `wp`, and `template_redirect` hooks that were causing critical WordPress errors
+- **Implemented Proper WooCommerce Hooks**: Now uses `woocommerce_thankyou` and `woocommerce_order_status_changed` hooks specifically designed for payment returns
+- **Fixed Critical WordPress Errors**: Eliminated fatal errors that were preventing the plugin from functioning properly
+
+#### Return URL Processing Fixes
+- **Universal Return Handling**: Added `handle_gmpays_return_anywhere()` method that works on ANY page with GMPays return parameters
+- **Cart Page Support**: Returns now work correctly when configured to redirect to `/carrito/` (cart page)
+- **Enhanced Logging**: Comprehensive debug logging for all return processing steps
+- **Duplicate Processing Prevention**: Added checks to prevent processing the same return multiple times
+
+#### Order Status Management
+- **Proper Status Updates**: Orders are now correctly marked as 'cancelled', 'failed', or 'on-hold'
+- **Note Addition**: Both public and private notes are properly added to orders
+- **Cart Restoration**: Failed/cancelled orders properly restore items to customer cart
+- **Metadata Updates**: Payment status metadata is correctly updated and saved
+
+### 🔧 TECHNICAL IMPROVEMENTS
+
+#### Hook System
+- **Multiple Hook Support**: Returns work with `woocommerce_thankyou`, `wp`, and `woocommerce_cart_loaded_from_session`
+- **Flexible Return URLs**: Plugin now handles returns regardless of configured return URL structure
+- **Better Error Handling**: Improved error checking and logging throughout return processing
+
+#### Debug and Logging
+- **Enhanced Debug Mode**: Comprehensive logging for troubleshooting return issues
+- **Parameter Validation**: Better validation of return URL parameters
+- **Order Verification**: Improved order lookup and payment method verification
+- **Processing Status**: Detailed logging of each step in return processing
+
+### 📋 CONFIGURATION UPDATES
+
+#### Return URL Configuration
+The plugin now supports flexible return URL configurations:
+- **Success**: Can redirect to any page with `?gmpays_success=1&order_id={order_id}`
+- **Failure**: Can redirect to any page with `?gmpays_failure=1&order_id={order_id}`
+- **Cancellation**: Can redirect to any page with `?gmpays_cancelled=1&order_id={order_id}`
+
+#### Supported Return Pages
+- ✅ Order received page (`/order-received/`)
+- ✅ Cart page (`/carrito/`)
+- ✅ Any custom page with proper parameters
+- ✅ Homepage or checkout page
+
+### 🧪 TESTING VERIFICATION
+
+#### Test Scenarios Covered
+- ✅ **Cart Page Returns**: Returns to `/carrito/` now work correctly
+- ✅ **Order Status Updates**: Orders properly change to 'cancelled', 'failed', 'on-hold'
+- ✅ **Note Addition**: Both public and private notes are added
+- ✅ **Cart Restoration**: Items restored for failed/cancelled orders
+- ✅ **No Duplicate Processing**: Same return processed only once
+- ✅ **Debug Logging**: Comprehensive logging for troubleshooting
+
+### 🚀 DEPLOYMENT NOTES
+
+#### Critical Changes
+- **New Hooks Added**: `wp` and `woocommerce_cart_loaded_from_session` hooks for universal return handling
+- **Enhanced Methods**: `handle_gmpays_return_anywhere()` method for flexible return processing
+- **Improved Logging**: Better debug information for troubleshooting
+
+#### Compatibility
+- **WordPress**: 5.0+ (tested)
+- **WooCommerce**: 5.0+ (tested up to 8.0)
+- **PHP**: 7.4+ (recommended 8.0+)
+
+### 📚 DOCUMENTATION
+
+#### Updated Files
+- **Configuration Guide**: Complete setup instructions for return URLs
+- **Testing Guide**: Step-by-step testing procedures
+- **Troubleshooting**: Common issues and solutions
+- **Changelog**: Detailed version history
+
+This version resolves ALL critical issues with return URL processing and provides a robust, reliable solution for GMPays payment returns.
+
+---
+
 ## [1.4.1] - 2024-12-19
 
 ### 🐛 Critical Bug Fixes

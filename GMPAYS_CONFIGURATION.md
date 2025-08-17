@@ -1,120 +1,160 @@
-# GMPays WooCommerce Gateway - Configuración
+# GMPays WooCommerce Gateway Configuration Guide
 
-## URLs de Configuración en GMPays
+## Overview
 
-Para que el gateway funcione correctamente, debes configurar las siguientes URLs en tu panel de control de GMPays:
+This plugin integrates GMPays payment processor with WooCommerce, providing secure credit card processing with support for multiple currencies and dual authentication (HMAC/RSA).
 
-### 1. URL de Éxito (Success URL)
+## Installation
+
+1. Upload the plugin to your `/wp-content/plugins/` directory
+2. Activate the plugin through the 'Plugins' menu in WordPress
+3. Go to WooCommerce > Settings > Payments to configure the gateway
+
+## Configuration
+
+### Basic Settings
+
+1. **Enable/Disable**: Toggle the gateway on/off
+2. **Title**: Display name shown to customers during checkout
+3. **Description**: Payment method description visible to customers
+4. **API URL**: Your GMPays API endpoint (default: https://paygate.gamemoney.com)
+5. **Project ID**: Your GMPays Project ID from the control panel
+
+### Authentication
+
+Choose between two authentication methods:
+
+#### HMAC Authentication
+- **HMAC Key**: Your HMAC secret key from GMPays
+- **Security**: High - uses cryptographic hash for request signing
+
+#### RSA Authentication (Recommended)
+- **Private Key**: Your RSA private key in PEM format
+- **Security**: Highest - uses asymmetric encryption for maximum security
+
+### Advanced Settings
+
+- **Minimum Amount**: Minimum order amount in EUR (GMPays requirement)
+- **Debug Log**: Enable detailed logging for troubleshooting
+
+## GMPays Control Panel Configuration
+
+### Return URLs Configuration
+
+Configure these URLs in your GMPays control panel:
+
+#### Success URL (URL перенаправления пользователя в случае успешной оплаты)
 ```
-https://tudominio.com/checkout/order-received/[ORDER_ID]/?key=[ORDER_KEY]
-```
-**Nota:** GMPays reemplazará automáticamente `[ORDER_ID]` y `[ORDER_KEY]` con los valores reales.
-
-### 2. URL de Fallo (Failure URL)
-```
-https://tudominio.com/carrito/?gmpays_failure=1&order_id=[ORDER_ID]
-```
-
-### 3. URL de Cancelación (Cancel URL)
-```
-https://tudominio.com/carrito/?gmpays_cancelled=1&order_id=[ORDER_ID]
-```
-
-### 4. URL de Notificación (Webhook URL)
-```
-https://tudominio.com/wp-json/gmpays/v1/webhook
-```
-
-## Parámetros de Retorno
-
-### Pago Exitoso
-Cuando un pago es exitoso, GMPays redirige al cliente con estos parámetros:
-- `gmpays_success=1`
-- `order_id=[ID_DE_LA_ORDEN]`
-- `transaction_id=[ID_DE_TRANSACCION]` (opcional)
-- `amount=[MONTO]` (opcional)
-- `currency=[MONEDA]` (opcional)
-- `invoice=[ID_DE_FACTURA]` (opcional)
-
-### Pago Fallido
-Cuando un pago falla, GMPays redirige al cliente con estos parámetros:
-- `gmpays_failure=1`
-- `order_id=[ID_DE_LA_ORDEN]`
-- `reason=[RAZON_DEL_FALLO]` (opcional)
-- `invoice_id=[ID_DE_FACTURA]` (opcional)
-- `invoice=[ID_DE_FACTURA]` (opcional)
-
-### Pago Cancelado
-Cuando un pago es cancelado, GMPays redirige al cliente con estos parámetros:
-- `gmpays_cancelled=1`
-- `order_id=[ID_DE_LA_ORDEN]`
-- `invoice=[ID_DE_FACTURA]` (opcional)
-
-## Estados de las Órdenes
-
-### Pago Exitoso
-- **Estado:** `on-hold` (en espera de confirmación)
-- **Nota:** "Payment received via GMPays - Order placed on hold for confirmation"
-- **Acción:** El administrador debe revisar y cambiar manualmente a "processing" o "completed"
-
-### Pago Fallido
-- **Estado:** `failed`
-- **Nota:** "Payment failed via GMPays: [RAZON]"
-- **Acción:** Los productos se restauran automáticamente al carrito
-
-### Pago Cancelado
-- **Estado:** `cancelled`
-- **Nota:** "Payment cancelled by customer via GMPays"
-- **Acción:** Los productos se restauran automáticamente al carrito
-
-## Webhooks
-
-### Estructura de Notificación
-GMPays envía notificaciones webhook con la siguiente estructura:
-
-```json
-{
-  "state": "success",
-  "project": "123456",
-  "invoice": "7238479374",
-  "status": "Paid",
-  "amount": "200.45",
-  "net_amount": "2",
-  "recieved_amount": "195.3",
-  "rate": "0.010",
-  "currency_project": "RUB",
-  "currency_user": "USD",
-  "user": "9336353",
-  "type": "yandex",
-  "wallet": "88326736363",
-  "comment": "User 9336353 invoice",
-  "project_invoice": "1541586969",
-  "time": "1472620176",
-  "signature": "[FIRMA_RSA]"
-}
+https://yourdomain.com/?gmpays_success=1&order_id={order_id}
 ```
 
-### Estados de Pago Soportados
-- `New` - Pago creado
-- `Processing` - Pago en procesamiento
-- `Paid` - Pago completado
-- `Refused` - Pago rechazado
-- `Refund` - Pago reembolsado
+#### Failure URL (URL перенаправления пользователя в случае неуспешной оплаты)
+```
+https://yourdomain.com/?gmpays_failure=1&order_id={order_id}
+```
 
-## Solución de Problemas
+#### Cancel URL (URL перенаправления пользователя при отмене оплаты)
+```
+https://yourdomain.com/?gmpays_cancelled=1&order_id={order_id}
+```
 
-### Problema: Las órdenes no se marcan como "on-hold"
-**Solución:** Verifica que la URL del webhook esté configurada correctamente en GMPays y que el servidor pueda recibir notificaciones POST.
+#### Notification URL (URL для оповещений о выплатах)
+```
+https://yourdomain.com/wp-json/gmpays/v1/webhook
+```
 
-### Problema: Los clientes no son redirigidos a la página correcta
-**Solución:** Verifica que las URLs de éxito, fallo y cancelación estén configuradas correctamente en GMPays.
+### Important Notes
 
-### Problema: Los webhooks no se procesan
-**Solución:** Verifica los logs de WooCommerce en WooCommerce → Estado → Logs → Buscar logs de 'gmpays-webhook'.
+- **Replace `{order_id}`**: GMPays will automatically replace this placeholder with the actual order ID
+- **Use HTTPS**: Always use HTTPS for production environments
+- **Domain Verification**: Ensure your domain matches exactly what's configured in GMPays
 
-## Notas Importantes
+## How It Works
 
-1. **Verificación de Firma:** Todos los webhooks son verificados usando el certificado RSA de GMPays.
-2. **Manejo de Errores:** Si un webhook falla, GMPays lo reintentará durante 24 horas.
-3. **Duplicados:** GMPays puede enviar notificaciones duplicadas. El sistema está diseñado para manejar esto de forma segura.
-4. **Monedas:** Todas las transacciones se procesan en USD en GMPays, independientemente de la moneda de tu tienda.
+### Payment Flow
+
+1. **Customer Checkout**: Customer selects GMPays payment method and completes checkout
+2. **Order Creation**: WooCommerce creates order with "pending payment" status
+3. **Redirect to GMPays**: Customer is redirected to GMPays payment page
+4. **Payment Processing**: Customer completes payment on GMPays
+5. **Return to Store**: Customer returns to your store via configured return URLs
+6. **Order Processing**: Plugin processes return and updates order status accordingly
+
+### Return URL Processing
+
+The plugin automatically handles all return scenarios:
+
+- **Success**: Order marked as "on-hold" for manual review
+- **Failure**: Order marked as "failed" with reason
+- **Cancellation**: Order marked as "cancelled" by customer
+
+### Webhook Notifications
+
+GMPays sends webhook notifications to update order statuses in real-time. The webhook handler:
+
+- Verifies signatures using RSA authentication
+- Updates order statuses automatically
+- Logs all transactions for audit purposes
+
+## Troubleshooting
+
+### Common Issues
+
+#### Return URLs Not Working
+- Verify URLs are configured correctly in GMPays control panel
+- Check that your domain matches exactly
+- Ensure HTTPS is used for production
+
+#### Orders Not Updating
+- Check debug logs for error messages
+- Verify webhook endpoint is accessible
+- Confirm signature verification is working
+
+#### Payment Method Not Showing
+- Check minimum amount requirements
+- Verify currency compatibility
+- Ensure gateway is enabled in WooCommerce settings
+
+### Debug Mode
+
+Enable debug mode to troubleshoot issues:
+
+1. Go to WooCommerce > Settings > Payments
+2. Click on GMPays Credit Card gateway
+3. Check "Enable logging" option
+4. Check logs at WooCommerce > Status > Logs
+
+### Log Locations
+
+- **Gateway Logs**: `wp-content/uploads/wc-logs/gmpays-gateway-*.log`
+- **Webhook Logs**: `wp-content/uploads/wc-logs/gmpays-webhook-*.log`
+
+## Security Considerations
+
+### Best Practices
+
+1. **Use RSA Authentication**: Provides highest security level
+2. **Keep Keys Secure**: Never share private keys or HMAC secrets
+3. **HTTPS Only**: Always use HTTPS in production
+4. **Regular Updates**: Keep plugin updated to latest version
+5. **Monitor Logs**: Regularly check logs for suspicious activity
+
+### Key Management
+
+- Store private keys securely
+- Rotate keys periodically
+- Use different keys for test and production environments
+- Never commit keys to version control
+
+## Support
+
+For technical support:
+
+1. Check the debug logs for error messages
+2. Verify GMPays control panel configuration
+3. Test with small amounts first
+4. Contact ElGrupito Development Team
+
+## Changelog
+
+See `CHANGELOG.md` for detailed version history and updates.

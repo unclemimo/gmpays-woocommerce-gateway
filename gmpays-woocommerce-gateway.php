@@ -3,7 +3,7 @@
  * Plugin Name: GMPays WooCommerce Payment Gateway
  * Plugin URI: https://elgrupito.com/
  * Description: Accept credit card payments via GMPays - International payment processor with support for multiple currencies, dual authentication (HMAC/RSA), enhanced order management, automatic status updates, minimum amount validation, failed payment handling, and comprehensive return URL management.
- * Version: 1.4.0
+ * Version: 1.4.5
  * Author: ElGrupito Development Team
  * Author URI: https://elgrupito.com/
  * Text Domain: gmpays-woocommerce-gateway
@@ -22,7 +22,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Define plugin constants
-define('GMPAYS_WC_GATEWAY_VERSION', '1.4.0');
+define('GMPAYS_WC_GATEWAY_VERSION', '1.4.5');
 define('GMPAYS_WC_GATEWAY_PLUGIN_FILE', __FILE__);
 define('GMPAYS_WC_GATEWAY_PLUGIN_PATH', plugin_dir_path(__FILE__));
 define('GMPAYS_WC_GATEWAY_PLUGIN_URL', plugin_dir_url(__FILE__));
@@ -61,18 +61,43 @@ class GMPaysWooCommerceGateway {
      * Constructor
      */
     public function __construct() {
-        $this->init_hooks();
+        // Set plugin constants
+        $this->set_constants();
+        
+        // Initialize plugin
+        add_action('plugins_loaded', array($this, 'init'), 0);
     }
     
     /**
-     * Initialize hooks
+     * Set plugin constants
      */
-    private function init_hooks() {
-        // Load plugin on plugins_loaded
-        add_action('plugins_loaded', array($this, 'init'));
+    private function set_constants() {
+        // Define plugin constants
+        define('GMPAYS_WC_GATEWAY_VERSION', '1.4.5');
+        define('GMPAYS_WC_GATEWAY_PLUGIN_FILE', __FILE__);
+        define('GMPAYS_WC_GATEWAY_PLUGIN_PATH', plugin_dir_path(__FILE__));
+        define('GMPAYS_WC_GATEWAY_PLUGIN_URL', plugin_dir_url(__FILE__));
+        define('GMPAYS_WC_GATEWAY_PLUGIN_BASENAME', plugin_basename(__FILE__));
+    }
+    
+    /**
+     * Initialize plugin
+     */
+    public function init() {
+        // Check if WooCommerce is active
+        if (!$this->is_woocommerce_active()) {
+            add_action('admin_notices', array($this, 'woocommerce_missing_notice'));
+            return;
+        }
+        
+        // Include required files
+        $this->includes();
+        
+        // Initialize payment gateways
+        add_filter('woocommerce_payment_gateways', array($this, 'add_gateways'));
         
         // Load text domain
-        add_action('init', array($this, 'load_textdomain'));
+        $this->load_textdomain();
         
         // Add plugin action links
         add_filter('plugin_action_links_' . GMPAYS_WC_GATEWAY_PLUGIN_BASENAME, array($this, 'plugin_action_links'));
@@ -82,44 +107,17 @@ class GMPaysWooCommerceGateway {
     }
     
     /**
-     * Initialize the plugin
+     * Check if WooCommerce is active
      */
-    public function init() {
-        try {
-            // Check if WooCommerce is active
-            if (!class_exists('WooCommerce')) {
-                add_action('admin_notices', array($this, 'woocommerce_missing_notice'));
-                return;
-            }
-            
-            // Check PHP version
-            if (version_compare(PHP_VERSION, '7.4', '<')) {
-                add_action('admin_notices', array($this, 'php_version_notice'));
-                return;
-            }
-            
-            // Check if Composer dependencies are installed
-            if (!file_exists(GMPAYS_WC_GATEWAY_PLUGIN_PATH . 'vendor/autoload.php')) {
-                add_action('admin_notices', array($this, 'composer_missing_notice'));
-                return;
-            }
-            
-            // Include required files
-            $this->includes();
-            
-            // Add payment gateways
-            add_filter('woocommerce_payment_gateways', array($this, 'add_gateways'));
-            
-            // Register webhook endpoint
-            add_action('rest_api_init', array($this, 'register_webhook_endpoint'));
-            
-            // Enqueue scripts
-            add_action('wp_enqueue_scripts', array($this, 'enqueue_scripts'));
-            
-        } catch (Exception $e) {
-            $this->log_error('Plugin initialization failed: ' . $e->getMessage());
-            add_action('admin_notices', array($this, 'initialization_error_notice'));
-        }
+    private function is_woocommerce_active() {
+        return in_array('woocommerce/woocommerce.php', apply_filters('active_plugins', get_option('active_plugins')));
+    }
+    
+    /**
+     * WooCommerce missing notice
+     */
+    public function woocommerce_missing_notice() {
+        echo '<div class="error"><p>' . __('GMPays WooCommerce Gateway requires WooCommerce to be installed and active.', 'gmpays-woocommerce-gateway') . '</p></div>';
     }
     
     /**
@@ -133,6 +131,7 @@ class GMPaysWooCommerceGateway {
         
         // Include payment gateway classes
         require_once GMPAYS_WC_GATEWAY_PLUGIN_PATH . 'includes/class-wc-gateway-gmpays-credit-card.php';
+        
         // Future: Add more payment method classes here
         // require_once GMPAYS_WC_GATEWAY_PLUGIN_PATH . 'includes/class-wc-gateway-gmpays-pix.php';
         // require_once GMPAYS_WC_GATEWAY_PLUGIN_PATH . 'includes/class-wc-gateway-gmpays-spei.php';
@@ -186,17 +185,7 @@ class GMPaysWooCommerceGateway {
             'callback' => array('GMPays_Webhook_Handler', 'handle_webhook'),
             'permission_callback' => '__return_true',
         ));
-        
-        // Note: Return handling is now managed by the gateway class methods
-        // to avoid conflicts and ensure proper order processing
     }
-    
-    // Note: Payment return handling methods have been moved to the gateway class
-    // to ensure proper order processing and avoid conflicts
-    
-    // Note: Payment failure handling is now managed by the gateway class
-    
-    // Note: Payment cancellation handling is now managed by the gateway class
     
     /**
      * Add plugin action links
@@ -209,16 +198,6 @@ class GMPaysWooCommerceGateway {
         );
         array_unshift($links, $settings_link);
         return $links;
-    }
-    
-    /**
-     * Display WooCommerce missing notice
-     */
-    public function woocommerce_missing_notice() {
-        echo '<div class="error"><p><strong>' . sprintf(
-            __('GMPays WooCommerce Gateway requires WooCommerce to be installed and active. You can download %s here.', 'gmpays-woocommerce-gateway'),
-            '<a href="https://wordpress.org/plugins/woocommerce/" target="_blank">WooCommerce</a>'
-        ) . '</strong></p></div>';
     }
     
     /**
