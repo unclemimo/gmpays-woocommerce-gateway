@@ -96,10 +96,15 @@ class WC_Gateway_GMPays_Credit_Card extends WC_Payment_Gateway {
         add_action('woocommerce_cart_loaded_from_session', array($this, 'handle_failed_payment_return'));
         
         // Handle GMPays return URLs - Use proper WooCommerce hooks
+        error_log('GMPays DEBUG: Registering WooCommerce hooks for return handling');
         add_action('woocommerce_thankyou', array($this, 'handle_success_return_thankyou'), 10, 1);
         add_action('woocommerce_cart_loaded_from_session', array($this, 'handle_failure_cancelled_return'));
         add_action('woocommerce_before_cart', array($this, 'handle_failure_cancelled_return'));
         add_action('woocommerce_before_checkout_form', array($this, 'handle_failure_cancelled_return'));
+        error_log('GMPays DEBUG: WooCommerce hooks registered successfully');
+        
+        // Add debugging hook to verify hook execution
+        add_action('wp_loaded', array($this, 'debug_hook_registration'));
         
         // Add AJAX handlers for admin actions
         add_action('wp_ajax_gmpays_check_status', array($this, 'ajax_check_payment_status'));
@@ -448,29 +453,49 @@ class WC_Gateway_GMPays_Credit_Card extends WC_Payment_Gateway {
      * Handle successful payment return from GMPays on thank you page
      */
     public function handle_success_return_thankyou($order_id) {
+        // DEBUG: Log method entry
+        error_log('GMPays DEBUG: handle_success_return_thankyou called with order_id: ' . $order_id);
+        error_log('GMPays DEBUG: $_GET parameters: ' . print_r($_GET, true));
+        
         // Only process if we have GMPays success parameters
         if (!isset($_GET['gmpays_success']) || !isset($_GET['order_id'])) {
+            error_log('GMPays DEBUG: Missing required parameters - gmpays_success: ' . (isset($_GET['gmpays_success']) ? 'YES' : 'NO') . ', order_id: ' . (isset($_GET['order_id']) ? 'YES' : 'NO'));
             return;
         }
         
         // Verify order ID matches
         if (intval($_GET['order_id']) !== $order_id) {
+            error_log('GMPays DEBUG: Order ID mismatch - GET order_id: ' . $_GET['order_id'] . ', method order_id: ' . $order_id);
             return;
         }
+        
+        error_log('GMPays DEBUG: Parameters validated, proceeding with order processing');
         
         if ($this->get_option('debug') === 'yes') {
             wc_get_logger()->info('GMPays: Processing success return for order ' . $order_id, array('source' => 'gmpays-gateway'));
         }
         
+        error_log('GMPays DEBUG: Attempting to get order with ID: ' . $order_id);
         $order = wc_get_order($order_id);
-        if (!$order || $order->get_payment_method() !== 'gmpays_credit_card') {
+        if (!$order) {
+            error_log('GMPays DEBUG: Failed to get order with ID: ' . $order_id);
+            return;
+        }
+        
+        error_log('GMPays DEBUG: Order retrieved successfully - Order ID: ' . $order->get_id() . ', Payment Method: ' . $order->get_payment_method());
+        
+        if ($order->get_payment_method() !== 'gmpays_credit_card') {
+            error_log('GMPays DEBUG: Order payment method mismatch - Expected: gmpays_credit_card, Got: ' . $order->get_payment_method());
             return;
         }
         
         // Check if order is already processed
         if ($order->is_paid()) {
+            error_log('GMPays DEBUG: Order is already paid, skipping processing');
             return;
         }
+        
+        error_log('GMPays DEBUG: Order validation passed, proceeding with status update');
         
         // Get GMPays transaction details from URL parameters
         $transaction_id = isset($_GET['transaction_id']) ? sanitize_text_field($_GET['transaction_id']) : '';
@@ -482,8 +507,11 @@ class WC_Gateway_GMPays_Credit_Card extends WC_Payment_Gateway {
             $transaction_id = sanitize_text_field($_GET['invoice']);
         }
         
+        error_log('GMPays DEBUG: About to update order status to on-hold');
+        
         // Mark order as on-hold (pending confirmation)
-        $order->update_status('on-hold', __('Payment received via GMPays - Order placed on hold for confirmation', 'gmpays-woocommerce-gateway'));
+        $status_result = $order->update_status('on-hold', __('Payment received via GMPays - Order placed on hold for confirmation', 'gmpays-woocommerce-gateway'));
+        error_log('GMPays DEBUG: Order status update result: ' . ($status_result ? 'SUCCESS' : 'FAILED'));
         
         // Add public note
         $note = sprintf(
@@ -492,7 +520,8 @@ class WC_Gateway_GMPays_Credit_Card extends WC_Payment_Gateway {
             $amount ?: $order->get_total(),
             strtoupper($currency)
         );
-        $order->add_order_note($note, false, false);
+        $note_result = $order->add_order_note($note, false, false);
+        error_log('GMPays DEBUG: Public note addition result: ' . ($note_result ? 'SUCCESS' : 'FAILED'));
         
         // Add private note
         $private_note = sprintf(
@@ -500,38 +529,56 @@ class WC_Gateway_GMPays_Credit_Card extends WC_Payment_Gateway {
             $order->get_order_number(),
             $transaction_id ?: 'Pending'
         );
-        $order->add_order_note($private_note, false, true);
+        $private_note_result = $order->add_order_note($private_note, false, true);
+        error_log('GMPays DEBUG: Private note addition result: ' . ($private_note_result ? 'SUCCESS' : 'FAILED'));
+        
+        error_log('GMPays DEBUG: About to update payment metadata');
         
         // Update payment metadata
         if ($transaction_id) {
             $order->update_meta_data('_gmpays_transaction_id', $transaction_id);
             $order->set_transaction_id($transaction_id);
+            error_log('GMPays DEBUG: Transaction ID metadata updated: ' . $transaction_id);
         }
         $order->update_meta_data('_gmpays_payment_status', 'completed');
         $order->update_meta_data('_gmpays_payment_completed_at', current_time('mysql'));
         
-        $order->save();
+        error_log('GMPays DEBUG: About to save order');
+        $save_result = $order->save();
+        error_log('GMPays DEBUG: Order save result: ' . ($save_result ? 'SUCCESS' : 'FAILED'));
         
+        error_log('GMPays DEBUG: About to complete payment');
         // Complete payment
-        $order->payment_complete($transaction_id);
+        $payment_complete_result = $order->payment_complete($transaction_id);
+        error_log('GMPays DEBUG: Payment complete result: ' . ($payment_complete_result ? 'SUCCESS' : 'FAILED'));
         
         // Clear cart
         if (WC()->cart) {
             WC()->cart->empty_cart();
+            error_log('GMPays DEBUG: Cart cleared successfully');
+        } else {
+            error_log('GMPays DEBUG: No cart available to clear');
         }
+        
+        error_log('GMPays DEBUG: handle_success_return_thankyou completed successfully for order: ' . $order_id);
     }
     
     /**
      * Handle failed/cancelled payment returns from GMPays
      */
     public function handle_failure_cancelled_return() {
+        error_log('GMPays DEBUG: handle_failure_cancelled_return called');
+        error_log('GMPays DEBUG: $_GET parameters: ' . print_r($_GET, true));
+        
         // Only process on frontend
         if (is_admin()) {
+            error_log('GMPays DEBUG: In admin area, skipping processing');
             return;
         }
         
         // Handle failure return from GMPays
         if (isset($_GET['gmpays_failure']) && isset($_GET['order_id'])) {
+            error_log('GMPays DEBUG: Processing failure return for order ' . $_GET['order_id']);
             if ($this->get_option('debug') === 'yes') {
                 wc_get_logger()->info('GMPays: Processing failure return for order ' . $_GET['order_id'], array('source' => 'gmpays-gateway'));
             }
@@ -541,22 +588,35 @@ class WC_Gateway_GMPays_Credit_Card extends WC_Payment_Gateway {
         
         // Handle cancelled return from GMPays
         if (isset($_GET['gmpays_cancelled']) && isset($_GET['order_id'])) {
+            error_log('GMPays DEBUG: Processing cancelled return for order ' . $_GET['order_id']);
             if ($this->get_option('debug') === 'yes') {
                 wc_get_logger()->info('GMPays: Processing cancelled return for order ' . $_GET['order_id'], array('source' => 'gmpays-gateway'));
             }
             $this->handle_cancelled_return();
             return; // Exit after processing to avoid duplicate processing
         }
+        
+        error_log('GMPays DEBUG: No matching parameters found for failure/cancelled return');
     }
     
     /**
      * Handle failed payment return from GMPays
      */
     private function handle_failure_return() {
+        error_log('GMPays DEBUG: handle_failure_return called');
         $order_id = intval($_GET['order_id']);
-        $order = wc_get_order($order_id);
+        error_log('GMPays DEBUG: Processing failure for order ID: ' . $order_id);
         
-        if (!$order || $order->get_payment_method() !== 'gmpays_credit_card') {
+        $order = wc_get_order($order_id);
+        if (!$order) {
+            error_log('GMPays DEBUG: Failed to get order for failure return - Order ID: ' . $order_id);
+            return;
+        }
+        
+        error_log('GMPays DEBUG: Order retrieved for failure return - Order ID: ' . $order->get_id() . ', Payment Method: ' . $order->get_payment_method());
+        
+        if ($order->get_payment_method() !== 'gmpays_credit_card') {
+            error_log('GMPays DEBUG: Payment method mismatch in failure return - Expected: gmpays_credit_card, Got: ' . $order->get_payment_method());
             return;
         }
         
@@ -613,13 +673,72 @@ class WC_Gateway_GMPays_Credit_Card extends WC_Payment_Gateway {
     }
     
     /**
+     * Debug hook registration and execution
+     */
+    public function debug_hook_registration() {
+        error_log('GMPays DEBUG: wp_loaded hook executed - Gateway class initialized');
+        error_log('GMPays DEBUG: Current page: ' . (isset($_SERVER['REQUEST_URI']) ? $_SERVER['REQUEST_URI'] : 'unknown'));
+        error_log('GMPays DEBUG: Is admin: ' . (is_admin() ? 'YES' : 'NO'));
+        error_log('GMPays DEBUG: Is frontend: ' . (!is_admin() ? 'YES' : 'NO'));
+        
+        // Check if we're on a thank you page
+        if (function_exists('is_wc_endpoint_url') && is_wc_endpoint_url('order-received')) {
+            error_log('GMPays DEBUG: On WooCommerce thank you page (order-received endpoint)');
+        } else {
+            error_log('GMPays DEBUG: NOT on WooCommerce thank you page');
+        }
+        
+        // Check if we're on cart page
+        if (function_exists('is_cart') && is_cart()) {
+            error_log('GMPays DEBUG: On WooCommerce cart page');
+        } else {
+            error_log('GMPays DEBUG: NOT on WooCommerce cart page');
+        }
+        
+        // Check if we're on checkout page
+        if (function_exists('is_checkout') && is_checkout()) {
+            error_log('GMPays DEBUG: On WooCommerce checkout page');
+        } else {
+            error_log('GMPays DEBUG: NOT on WooCommerce checkout page');
+        }
+        
+        // Log current action and filter hooks
+        error_log('GMPays DEBUG: Current action: ' . current_action());
+        error_log('GMPays DEBUG: Current filter: ' . current_filter());
+        
+        // Check if our hooks are properly registered
+        global $wp_filter;
+        if (isset($wp_filter['woocommerce_thankyou'])) {
+            error_log('GMPays DEBUG: woocommerce_thankyou hook is registered');
+        } else {
+            error_log('GMPays DEBUG: woocommerce_thankyou hook is NOT registered');
+        }
+        
+        if (isset($wp_filter['woocommerce_cart_loaded_from_session'])) {
+            error_log('GMPays DEBUG: woocommerce_cart_loaded_from_session hook is registered');
+        } else {
+            error_log('GMPays DEBUG: woocommerce_cart_loaded_from_session hook is NOT registered');
+        }
+    }
+    
+    /**
      * Handle cancelled payment return from GMPays
      */
     private function handle_cancelled_return() {
+        error_log('GMPays DEBUG: handle_cancelled_return called');
         $order_id = intval($_GET['order_id']);
-        $order = wc_get_order($order_id);
+        error_log('GMPays DEBUG: Processing cancellation for order ID: ' . $order_id);
         
-        if (!$order || $order->get_payment_method() !== 'gmpays_credit_card') {
+        $order = wc_get_order($order_id);
+        if (!$order) {
+            error_log('GMPays DEBUG: Failed to get order for cancellation return - Order ID: ' . $order_id);
+            return;
+        }
+        
+        error_log('GMPays DEBUG: Order retrieved for cancellation return - Order ID: ' . $order->get_id() . ', Payment Method: ' . $order->get_payment_method());
+        
+        if ($order->get_payment_method() !== 'gmpays_credit_card') {
+            error_log('GMPays DEBUG: Payment method mismatch in cancellation return - Expected: gmpays_credit_card, Got: ' . $order->get_payment_method());
             return;
         }
         
