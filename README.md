@@ -1,147 +1,181 @@
-# GMPays WooCommerce Payment Gateway
+# GMPays WooCommerce Gateway
 
-A comprehensive WooCommerce payment gateway for GMPays international payment processor with support for multiple currencies, dual authentication methods, and enhanced order management.
+A robust and reliable WooCommerce payment gateway for GMPays payment processor, designed with modern webhook-based architecture for real-time payment status updates.
 
-## Features
+## 🚀 Features
 
-### 🔐 Authentication Methods
-- **HMAC Authentication**: Simple and secure HMAC key-based authentication
-- **RSA Authentication**: Advanced RSA private key authentication for enhanced security
+- **Real-time Payment Updates**: Webhook-based notifications for instant order status updates
+- **Dual Authentication**: Support for both HMAC and RSA authentication methods
+- **Multi-currency Support**: Automatic USD conversion for international payments
+- **Comprehensive Logging**: Detailed logging for debugging and monitoring
+- **Admin Interface**: Built-in payment status checking and management tools
+- **Fallback Mechanisms**: API polling when webhooks fail
+- **Security First**: RSA signature verification and secure API communication
 
-### 💳 Payment Processing
-- **Credit Card Payments**: Accept international credit card payments
-- **Multiple Currencies**: Support for USD, EUR, COP, MXN, ARS, VES, PEN, CLP, BRL, UYU
-- **Currency Conversion**: Automatic currency conversion using WooCommerce Multi Currency
+## 🔧 Requirements
 
-### 📊 Order Management
-- **Automatic Status Updates**: Orders automatically transition to appropriate statuses
-- **Transaction Tracking**: Complete transaction history and metadata storage
-- **Order Notes**: Public and private notes for all payment events
-- **Minimum Amount Validation**: Configurable minimum order amounts (default: 5.00 EUR)
+- **WordPress**: 5.0 or higher
+- **WooCommerce**: 5.0 or higher
+- **PHP**: 7.4 or higher (8.0+ recommended)
+- **SSL Certificate**: Required for production use
 
-### 🔄 Return URL Management
-- **Success Returns**: Handle successful payment returns with proper order status updates
-- **Failure Returns**: Process failed payment returns and restore cart items
-- **Cancellation Returns**: Handle payment cancellations gracefully
-- **REST API Endpoints**: Dedicated endpoints for GMPays return notifications
+## 📦 Installation
 
-### 📡 Webhook Integration
-- **Real-time Notifications**: Receive instant payment status updates from GMPays
-- **Signature Verification**: Secure webhook processing with RSA signature verification
-- **Automatic Processing**: Orders are automatically updated based on webhook notifications
+1. **Upload the plugin** to `/wp-content/plugins/gmpays-woocommerce-gateway/`
+2. **Activate the plugin** through WordPress admin
+3. **Configure the gateway** in WooCommerce → Settings → Payments
+4. **Set up webhooks** in your GMPays control panel
 
-### 🛠️ Admin Features
-- **Payment Status Check**: Verify payment status directly from order page
-- **Transaction Details**: View complete GMPays transaction information
-- **Debug Logging**: Comprehensive logging for troubleshooting
-- **Meta Box Integration**: Dedicated meta box for GMPays payment details
+## ⚙️ Configuration
 
-## Installation
+### 1. Plugin Settings
 
-1. **Upload Plugin**: Upload the plugin files to `/wp-content/plugins/gmpays-woocommerce-gateway/`
-2. **Activate Plugin**: Activate the plugin through the 'Plugins' menu in WordPress
-3. **Configure Gateway**: Go to WooCommerce > Settings > Payments > GMPays Credit Card
-4. **Set Up Authentication**: Choose between HMAC or RSA authentication and configure keys
-5. **Configure URLs**: Set up return URLs and webhook endpoints in GMPays control panel
+Navigate to **WooCommerce → Settings → Payments → GMPays Credit Card**:
 
-## Configuration
+- **Enable/Disable**: Toggle the gateway
+- **Title**: Payment method display name
+- **Description**: Payment method description
+- **API URL**: Your GMPays API endpoint
+- **Project ID**: Your GMPays Project ID
+- **Authentication Method**: Choose HMAC or RSA
+- **HMAC Key** or **RSA Private Key**: Your credentials
+- **Debug Mode**: Enable for troubleshooting
 
-### Authentication Setup
+### 2. GMPays Control Panel
 
-#### HMAC Authentication (Recommended for most users)
-1. Get your HMAC key from GMPays control panel
-2. Select "HMAC" as authentication method
-3. Enter your HMAC key in the settings
+Configure in your GMPays control panel:
 
-#### RSA Authentication (Advanced users)
-1. Generate RSA key pair:
-   ```bash
-   openssl genrsa -out private_key.pem 2048
-   openssl rsa -in private_key.pem -pubout -out public_key.pem -outform PEM
-   ```
-2. Upload public key to GMPays control panel
-3. Select "RSA" as authentication method
-4. Paste your private key in the settings
+- **Webhook URL**: `https://yoursite.com/wp-json/gmpays/v1/webhook`
+- **Project ID**: Your unique project identifier
+- **Authentication**: HMAC key or RSA public key
 
-### URL Configuration
+### 3. Return URLs
 
-Configure these URLs in your GMPays control panel:
+**IMPORTANT**: The plugin automatically handles return URLs:
 
-- **Notification URL**: `https://yoursite.com/wp-json/gmpays/v1/webhook`
-- **Success URL**: `https://yoursite.com/?gmpays_success=1&order_id={order_id}`
-- **Failure URL**: `https://yoursite.com/?gmpays_failure=1&order_id={order_id}`
-- **Cancel URL**: `https://yoursite.com/?gmpays_cancelled=1&order_id={order_id}`
+- **Success**: `/order-received/` (WooCommerce standard)
+- **Cancel**: `/cart/` (WooCommerce standard)
 
-Replace `{order_id}` with the actual order ID in your GMPays configuration.
+**Do NOT** configure custom return URLs in GMPays.
 
-## How It Works
+## 🔄 How It Works
 
 ### Payment Flow
-1. **Customer Checkout**: Customer selects GMPays Credit Card as payment method
-2. **Order Creation**: WooCommerce creates order and redirects to GMPays
-3. **Payment Processing**: Customer completes payment on GMPays platform
-4. **Return Handling**: Customer returns to your site via configured return URLs
-5. **Order Update**: Order status is automatically updated based on payment result
-6. **Webhook Processing**: GMPays sends webhook notifications for real-time updates
 
-### Return URL Processing
-The plugin handles three types of returns from GMPays:
-
-- **Success Returns**: Orders are marked as "on-hold" with transaction details
-- **Failure Returns**: Orders are marked as "failed" with failure reasons
-- **Cancellation Returns**: Orders are marked as "cancelled" and cart is restored
+1. **Customer checkout** → Order created with "pending" status
+2. **Redirect to GMPays** → Customer completes payment on GMPays terminal
+3. **GMPays processes payment** → Sends webhook notification
+4. **Plugin receives webhook** → Updates order status automatically
+5. **Customer returns** → Sees updated order status on thank you page
 
 ### Webhook Processing
-Webhooks provide real-time payment status updates:
-- **Payment Success**: Order status updated to "on-hold"
-- **Payment Failure**: Order status updated to "failed"
-- **Payment Cancellation**: Order status updated to "cancelled"
 
-## Order Statuses
+The plugin registers a webhook endpoint that:
 
-- **Pending**: Initial order status, awaiting payment
-- **On-Hold**: Payment received, awaiting manual confirmation
-- **Processing**: Order confirmed and being processed
-- **Completed**: Order fulfilled and completed
-- **Failed**: Payment failed or was rejected
-- **Cancelled**: Payment was cancelled by customer
+- Receives payment notifications from GMPays
+- Verifies signatures for security
+- Updates order statuses automatically
+- Logs all activities for debugging
 
-## Troubleshooting
+### Fallback Mechanisms
+
+If webhooks fail, the plugin includes:
+
+- **API status polling** on thank you page
+- **Manual status checking** from admin panel
+- **Automatic retry logic** for failed operations
+
+## 🛠️ Troubleshooting
 
 ### Common Issues
 
-1. **Authentication Errors**: Verify your HMAC key or RSA private key is correct
-2. **Webhook Failures**: Check that your webhook URL is accessible and properly configured
-3. **Order Status Issues**: Verify return URLs are correctly configured in GMPays
-4. **Currency Conversion**: Ensure WooCommerce Multi Currency is properly configured
+1. **Orders not updating**: Check webhook URL configuration in GMPays
+2. **Payment status unknown**: Use admin "Check Payment Status" button
+3. **Webhook failures**: Check server logs and GMPays webhook settings
 
 ### Debug Mode
-Enable debug logging in the gateway settings to troubleshoot issues:
-- Logs are stored in WooCommerce logs
-- Check for GMPays-specific log entries
-- Verify API requests and responses
 
-### Support
-For technical support and issues:
-- Check the debug logs for error messages
-- Verify your GMPays account configuration
-- Contact GMPays support for payment processing issues
+Enable debug mode to see detailed logs in:
 
-## Changelog
+- WooCommerce → Status → Logs → `gmpays-gateway`
+- WordPress error log (if configured)
 
-See [CHANGELOG.md](CHANGELOG.md) for detailed version history and updates.
+### Manual Status Check
 
-## Requirements
+From the admin order page:
 
-- WordPress 5.0+
-- WooCommerce 5.0+
-- PHP 7.4+
-- SSL certificate (required for production)
+1. Go to WooCommerce → Orders
+2. Click on a GMPays order
+3. Look for "GMPays Payment Details" meta box
+4. Click "Check Payment Status" button
 
-## License
+## 🔒 Security
 
-This plugin is licensed under the GPL v2 or later.
+- **RSA signature verification** for webhooks
+- **Nonce verification** for AJAX requests
+- **Input sanitization** for all user data
+- **Secure API communication** with GMPays
 
-## Support
+## 📚 Documentation
 
-For support and feature requests, please contact the development team at ElGrupito.
+- **[Configuration Guide](GMPAYS_CONFIGURATION.md)**: Complete setup instructions
+- **[Changelog](CHANGELOG.md)**: Version history and updates
+- **[Troubleshooting](GMPAYS_CONFIGURATION.md#troubleshooting)**: Common issues and solutions
+
+## 🆘 Support
+
+For technical support:
+
+1. Check the debug logs
+2. Verify GMPays configuration
+3. Test webhook endpoint accessibility
+4. Contact support with specific error details
+
+## 🔄 Migration
+
+### From Previous Versions
+
+If upgrading from v1.4.4 or earlier:
+
+1. **Backup your configuration**
+2. **Update the plugin**
+3. **Configure webhook URL** in GMPays
+4. **Remove custom return URLs**
+5. **Test thoroughly**
+
+**Note**: v1.4.5 is NOT backward compatible with previous versions.
+
+## 📄 License
+
+This plugin is proprietary software. All rights reserved.
+
+## 🏗️ Architecture
+
+### Core Components
+
+- **Gateway Class**: Main payment gateway implementation
+- **API Client**: Handles communication with GMPays API
+- **Webhook Handler**: Processes payment notifications
+- **Currency Manager**: Handles multi-currency conversion
+- **Admin Interface**: Provides management tools
+
+### Hooks and Filters
+
+The plugin integrates with WooCommerce using:
+
+- `woocommerce_thankyou`: Handles payment returns
+- `woocommerce_order_status_changed`: Manages status updates
+- `add_meta_boxes`: Adds admin interface
+- `wp_ajax_*`: Handles AJAX requests
+
+### Database Integration
+
+- **Order Meta**: Stores payment details and status
+- **Transaction Tracking**: Links orders to GMPays invoices
+- **Logging**: Comprehensive activity logging
+
+---
+
+**Version**: 1.4.5  
+**Last Updated**: December 19, 2024  
+**Compatibility**: WordPress 5.0+, WooCommerce 5.0+

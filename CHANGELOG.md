@@ -1,356 +1,159 @@
 # Changelog
 
-All notable changes to this project will be documented in this file.
+All notable changes to the GMPays WooCommerce Gateway plugin will be documented in this file.
 
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
-and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+## [1.4.6] - 2024-12-19
+
+### 🚀 Major Changes
+- **Implemented API-based status checking** as primary method for payment status updates
+- **Resolved GMPays terminal endpoint limitations** that prevented webhook and URL parameter functionality
+- **Automatic order status updates** when customers return from GMPays payment page
+
+### ✅ Added
+- **`check_and_update_payment_status()`** method for real-time API status checking
+- **`process_successful_payment()`** method for handling successful payments
+- **`process_failed_payment()` method for handling failed payments
+- **`process_cancelled_payment()` method for handling cancelled payments
+- **`process_processing_payment()` method for handling processing payments
+- **Automatic status checking** on thank you page load
+- **Enhanced order metadata** storage for GMPays invoice IDs
+
+### 🔧 Fixed
+- **Orders not updating** when users return from GMPays gateway
+- **Missing payment status information** due to GMPays terminal limitations
+- **Reliance on unreliable webhooks** and URL parameters
+- **Order status management** for all payment scenarios
+- **Admin status checking** functionality
+
+### 🔄 Changed
+- **Primary method**: Now uses API status checking instead of webhooks
+- **Return handling**: Automatically checks payment status when customer returns
+- **Status processing**: Direct API communication for real-time updates
+- **Error handling**: Better fallback mechanisms and logging
+
+### 🗑️ Removed
+- **Dependency on webhook notifications** (kept as optional for future use)
+- **Reliance on URL parameters** that GMPays doesn't send
+- **Complex fallback logic** that wasn't working
+
+### 📚 Documentation
+- **Updated configuration guide** for API-based approach
+- **Added troubleshooting section** for API-related issues
+- **Updated testing procedures** for new implementation
 
 ## [1.4.5] - 2024-12-19
 
-### 🚨 CRITICAL FIXES
+### 🚀 Major Changes
+- **Complete architecture rewrite** from URL parameter-based to webhook-based system
+- **Replaced deprecated hooks** with proper WooCommerce integration
+- **Implemented proper webhook handling** for real-time payment status updates
 
-#### Complete Return URL Handling Overhaul
-- **Eliminated WordPress Hook Conflicts**: Removed all problematic `init`, `wp`, and `template_redirect` hooks that were causing critical WordPress errors
-- **Implemented Proper WooCommerce Hooks**: Now uses `woocommerce_thankyou` and `woocommerce_order_status_changed` hooks specifically designed for payment returns
-- **Fixed Critical WordPress Errors**: Eliminated fatal errors that were preventing the plugin from functioning properly
+### ✅ Added
+- **Webhook endpoint** at `/wp-json/gmpays/v1/webhook` for GMPays notifications
+- **API status polling** as backup mechanism when webhooks fail
+- **Proper WooCommerce hooks** (`woocommerce_thankyou`, `woocommerce_order_status_changed`)
+- **Admin meta box** with payment details and manual status check button
+- **AJAX endpoint** for manual payment status verification
+- **Comprehensive logging** for debugging and monitoring
+- **Automatic order status updates** based on payment status
+- **Fallback mechanisms** for reliable order management
 
-#### Return URL Processing Fixes
-- **Universal Return Handling**: Added `handle_gmpays_return_anywhere()` method that works on ANY page with GMPays return parameters
-- **Cart Page Support**: Returns now work correctly when configured to redirect to `/carrito/` (cart page)
-- **Enhanced Logging**: Comprehensive debug logging for all return processing steps
-- **Duplicate Processing Prevention**: Added checks to prevent processing the same return multiple times
+### 🔧 Fixed
+- **Orders not updating** when users return from GMPays gateway
+- **Hooks not executing** due to incorrect implementation
+- **Missing order notes** for payment status changes
+- **Incompatible return URL handling** with GMPays terminal flow
+- **Security vulnerabilities** in AJAX requests
+- **Missing error handling** for failed API calls
 
-#### Order Status Management
-- **Proper Status Updates**: Orders are now correctly marked as 'cancelled', 'failed', or 'on-hold'
-- **Note Addition**: Both public and private notes are properly added to orders
-- **Cart Restoration**: Failed/cancelled orders properly restore items to customer cart
-- **Metadata Updates**: Payment status metadata is correctly updated and saved
-
-### 🔧 TECHNICAL IMPROVEMENTS
-
-#### Hook System
-- **Multiple Hook Support**: Returns work with `woocommerce_thankyou`, `wp`, and `woocommerce_cart_loaded_from_session`
-- **Flexible Return URLs**: Plugin now handles returns regardless of configured return URL structure
-- **Better Error Handling**: Improved error checking and logging throughout return processing
-
-#### Debug and Logging
-- **Enhanced Debug Mode**: Comprehensive logging for troubleshooting return issues
-- **Parameter Validation**: Better validation of return URL parameters
-- **Order Verification**: Improved order lookup and payment method verification
-- **Processing Status**: Detailed logging of each step in return processing
-
-### 📋 CONFIGURATION UPDATES
-
-#### Return URL Configuration
-The plugin now supports flexible return URL configurations:
-- **Success**: Can redirect to any page with `?gmpays_success=1&order_id={order_id}`
-- **Failure**: Can redirect to any page with `?gmpays_failure=1&order_id={order_id}`
-- **Cancellation**: Can redirect to any page with `?gmpays_cancelled=1&order_id={order_id}`
-
-#### Supported Return Pages
-- ✅ Order received page (`/order-received/`)
-- ✅ Cart page (`/carrito/`)
-- ✅ Any custom page with proper parameters
-- ✅ Homepage or checkout page
-
-### 🧪 TESTING VERIFICATION
-
-#### Test Scenarios Covered
-- ✅ **Cart Page Returns**: Returns to `/carrito/` now work correctly
-- ✅ **Order Status Updates**: Orders properly change to 'cancelled', 'failed', 'on-hold'
-- ✅ **Note Addition**: Both public and private notes are added
-- ✅ **Cart Restoration**: Items restored for failed/cancelled orders
-- ✅ **No Duplicate Processing**: Same return processed only once
-- ✅ **Debug Logging**: Comprehensive logging for troubleshooting
-
-### 🚀 DEPLOYMENT NOTES
-
-#### Critical Changes
-- **New Hooks Added**: `wp` and `woocommerce_cart_loaded_from_session` hooks for universal return handling
-- **Enhanced Methods**: `handle_gmpays_return_anywhere()` method for flexible return processing
-- **Improved Logging**: Better debug information for troubleshooting
-
-#### Compatibility
-- **WordPress**: 5.0+ (tested)
-- **WooCommerce**: 5.0+ (tested up to 8.0)
-- **PHP**: 7.4+ (recommended 8.0+)
-
-### 📚 DOCUMENTATION
-
-#### Updated Files
-- **Configuration Guide**: Complete setup instructions for return URLs
-- **Testing Guide**: Step-by-step testing procedures
-- **Troubleshooting**: Common issues and solutions
-- **Changelog**: Detailed version history
-
-This version resolves ALL critical issues with return URL processing and provides a robust, reliable solution for GMPays payment returns.
-
----
-
-## [1.4.1] - 2024-12-19
-
-### 🐛 Critical Bug Fixes
-
-#### Fixed Return URL Redirect Issues
-- **Fixed Incorrect Success Redirects**: Corrected URLs that were redirecting customers to homepage instead of order summary page
-- **Fixed Failure/Cancellation Redirects**: Customers now properly return to cart page instead of homepage
-- **Eliminated Duplicate Return Handling**: Removed conflicting REST API endpoints that were interfering with proper order processing
-
-#### Fixed Order Status Management
-- **Fixed "on-hold" Status Issue**: Orders now properly transition to "on-hold" status when webhooks are processed
-- **Improved Webhook Processing**: Enhanced webhook handler to correctly recognize GMPays payment statuses
-- **Better Order Lookup**: Improved order identification from webhook data using multiple fallback methods
-
-### 🔧 Changed
-- **Consolidated Return Handling**: All return URL processing now handled exclusively by gateway class methods
-- **Updated Webhook Status Recognition**: Added support for GMPays-specific status values (Paid, Refused, New, Processing, Refund)
-- **Enhanced Parameter Handling**: Improved support for GMPays return parameters including `invoice` field
-- **Removed Duplicate Code**: Eliminated conflicting REST API endpoints and duplicate methods
-
-### 📋 Technical Details
-- **Modified Files:**
-  - `includes/class-wc-gateway-gmpays-credit-card.php`: Fixed return URL generation and parameter handling
-  - `gmpays-woocommerce-gateway.php`: Removed duplicate REST endpoints and methods
-  - `includes/class-gmpays-webhook-handler.php`: Enhanced webhook processing and order lookup
-- **Key Changes:**
-  - Success URLs now use `$this->get_return_url($order)` instead of `home_url('/')`
-  - Failure/Cancellation URLs now redirect to `wc_get_cart_url()` instead of homepage
-  - Webhook handler now recognizes GMPays-specific status values
-  - Added support for `project_invoice` field in webhook data
-  - Improved order lookup with multiple fallback methods
-  - Enhanced logging and debugging capabilities
-
-### 📚 Documentation
-- **Added Configuration Guide**: Created `GMPAYS_CONFIGURATION.md` with complete setup instructions
-- **Updated Return URL Configuration**: Clear instructions for configuring GMPays return URLs
-- **Webhook Configuration**: Detailed webhook setup and troubleshooting guide
-
----
-
-## [1.4.0] - 2024-12-19
-
-### ✨ Added
-- **Comprehensive Return URL Management**: Added proper handling for GMPays return URLs (success, failure, cancelled)
-- **REST API Endpoints**: New endpoints for handling GMPays return notifications
-- **Enhanced Order Status Management**: Orders now properly transition to "on-hold" status when payments are successful
-- **Transaction ID Integration**: Improved integration with WooCommerce native transaction ID field
-- **Return URL Parameters**: Added support for GMPays return URL parameters (transaction_id, amount, currency, reason)
-- **AJAX Payment Status Check**: Admin can now check payment status directly from order page
-
-### 🔧 Changed
-- **Order Status Flow**: Successful payments now consistently set order to "on-hold" instead of "pending payment"
-- **Return URL Handling**: Improved handling of customer returns from GMPays payment page
-- **Webhook Processing**: Enhanced webhook handling to ensure proper order status updates
-- **URL Structure**: Updated return URLs to include proper parameters for GMPays integration
-
-### 🐛 Fixed
-- **Failed Payment Returns**: Fixed issue where orders remained "pending payment" when customers returned from GMPays without completing payment
-- **Order Status Updates**: Orders are now properly marked as failed when payment processing fails
-- **Transaction ID Updates**: Fixed issue where transaction IDs weren't properly stored in WooCommerce
-- **Return URL Processing**: Fixed handling of GMPays return notifications
-
-### 📋 Technical Details
-- Added `handle_gmpays_returns()` method for processing return URL parameters
-- Implemented REST API endpoints for GMPays return handling
-- Added `ajax_check_payment_status()` method for admin payment status verification
-- Enhanced webhook handler to ensure consistent order status management
-- Updated URL generation to include proper GMPays return parameters
-
-## [1.3.3] - 2024-12-19
-
-### ✨ Added
-- **Minimum Amount Validation**: Added configurable minimum order amount (default: 5.00 EUR) to prevent orders below GMPays requirements
-- **Frontend Validation**: Checkout now prevents proceeding if order amount is below minimum requirement
-- **Failed Payment Handling**: Automatic order status management when customers return without completing payment
-- **Cart Restoration**: Failed orders automatically restore items to customer's cart
-- **Smart Currency Conversion**: Minimum amount validation works with multiple currencies using WooCommerce Multi Currency
-
-### 🔧 Changed
-- **Gateway Availability**: Gateway now automatically hides when order amount is below minimum
-- **Error Handling**: Better error messages for minimum amount violations
-- **Order Flow**: Failed payments now properly redirect to cart with failure parameters
-- **User Experience**: Customers get clear feedback about minimum amount requirements
-
-### 🐛 Fixed
-- **Pending Order Issue**: Fixed issue where orders remained "pending payment" when customers returned from GMPays without completing payment
-- **Order Status Management**: Orders are now properly marked as failed when payment processing fails
-- **Cart State**: Cart items are properly restored when orders fail
-
-### 📋 Technical Details
-- Added `minimum_amount` configuration field in gateway settings
-- Implemented `convert_to_eur()` method in currency manager for minimum amount validation
-- Added `meets_minimum_amount()` and `check_minimum_amount()` methods for validation
-- Implemented `handle_failed_payment_return()` for managing failed payment returns
-- Added `restore_cart_from_order()` method for cart restoration
-
-## [1.3.2] - 2024-12-19
-
-### ✨ Added
-- **Enhanced Order Management**: Orders now automatically move to "on-hold" status when payment is successful
-- **Private Order Notes**: Added private notes for all payment events (success, failure, cancellation, refund)
-- **Transaction ID Integration**: Now properly sets WooCommerce native `transaction_id` field
-- **Processing Fee Notice**: Added note about banking processing fees in order descriptions
-- **Improved Webhook Handling**: Enhanced webhook processing with better order status management
-
-### 🔧 Changed
-- **Order Status Flow**: Successful payments now set order to "on-hold" instead of "pending payment"
-- **Note Visibility**: Public notes for customers, private notes for administrators
-- **Description Format**: Order descriptions now include processing fee information
-- **Metadata Management**: Better integration with WooCommerce native fields
-
-### 🐛 Fixed
-- **Order Status Updates**: Fixed issue where successful payments didn't update order status properly
-- **Transaction Tracking**: Improved transaction ID handling and storage
-- **Webhook Processing**: Enhanced error handling and logging for webhook events
-
-## [1.3.1] - 2024-12-19
-
-### 🐛 Bug Fixes
-
-### Fixed HMAC Authentication Issues
-- **Fixed API Client Initialization**: Updated `is_configured()` method to properly check HMAC vs RSA authentication
-- **Fixed Private Key Validation Errors**: Updated `create_invoice()` method to check for HMAC key when HMAC is selected
-- **Fixed Test Connection Method**: Updated `test_connection()` method to handle both authentication methods
-- **Removed Hardcoded Private Key Requirements**: HMAC authentication no longer requires RSA private keys
-
-### Updated API Integration
-- **Changed API Endpoint**: Updated from `/invoice` to `/terminal/create` for credit card payments (per GMPays documentation)
-- **Fixed Request Data Format**: 
-  - Changed `description` to `comment` (per GMPays API specification)
-  - Changed `email` to `add_email` (per GMPays API specification)
-  - Added `wallet` field (required by GMPays terminal API)
-- **Updated Response Handling**: Modified to match GMPays terminal API response format
-- **Fixed Signature Generation**: HMAC signatures now properly generated for terminal API calls
-
-## [1.3.0] - 2024-12-19
-
-### ✨ Added
-- **Dual Authentication Support**: Added support for both HMAC and RSA authentication methods
-- **Authentication Method Selection**: Users can now choose between HMAC (simpler) and RSA (more secure)
-- **Dynamic Form Fields**: Admin interface automatically shows/hides relevant fields based on selected method
-- **HMAC Key Support**: Plugin now properly supports HMAC keys from GMPays control panel
-- **Backward Compatibility**: Existing RSA configurations continue to work
-
-### 🔧 Changed
-- Updated gateway settings to include authentication method selection
-- Modified API client to handle both HMAC and RSA signatures
-- Enhanced webhook signature verification for both methods
-- Updated installation documentation with dual authentication instructions
-- Improved error handling for authentication method mismatches
-
-### 🐛 Fixed
-- Fixed HMAC authentication not working due to hardcoded RSA requirements
-- Fixed API client initialization errors when using HMAC keys
-- Fixed signature verification failures for HMAC authentication
-- Fixed configuration validation errors for HMAC method
-
-## [1.2.0] - 2024-12-18
-
-### ✨ Added
-- **RSA Signature Support**: Replaced HMAC with RSA signatures for enhanced security
-- **Enhanced Security**: Added RSA private key authentication
-- **Improved Error Handling**: Better error messages and logging
-- **Webhook Signature Verification**: Added RSA signature verification for webhooks
-
-### 🔧 Changed
-- **Authentication Method**: Changed from HMAC to RSA signatures
-- **API Security**: Enhanced API request security with RSA signatures
-- **Documentation**: Updated installation guide for RSA key setup
-
-### 🚨 Breaking Changes
-- **HMAC Keys No Longer Supported**: Plugin now requires RSA private keys
-- **Configuration Update Required**: Users must regenerate RSA keys in GMPays control panel
-
-## [1.1.0] - 2024-12-17
-
-### ✨ Added
-- **Initial Release**: Basic GMPays WooCommerce integration
-- **Credit Card Support**: Accept international credit card payments
-- **Multi-Currency Support**: Automatic USD conversion for international payments
-- **Webhook Integration**: Payment status notifications
-- **Admin Interface**: Payment gateway configuration and order management
-
-### 🔧 Features
-- **Payment Processing**: Secure credit card payment processing via GMPays
-- **Order Management**: Automatic order status updates
-- **Currency Conversion**: Real-time currency conversion to USD
-- **Error Handling**: Comprehensive error handling and logging
-- **Security**: HMAC signature verification for webhooks
-
-## [1.2.1] - 2024-12-19
-
-### 🔧 Changed
-- Updated URLs to use elgrupito.com domain
-- Success URL: `https://elgrupito.com/order-received/order-received/`
-- Failure URL: `https://elgrupito.com/checkout/`
-- Notification URL: `https://elgrupito.com/wp-json/gmpays/v1/webhook`
+### 🗑️ Removed
+- **Deprecated URL parameter handling** (`gmpays_success`, `gmpays_failure`, etc.)
+- **Unused cart restoration methods** that caused conflicts
+- **Duplicate display methods** that cluttered the codebase
+- **Ineffective fallback hooks** that didn't work properly
 
 ### 🔒 Security
-- Added `.gitignore` to exclude private keys and sensitive files
-- Enhanced security by preventing accidental commit of cryptographic keys
+- **RSA signature verification** for webhook authenticity
+- **Nonce verification** for all AJAX requests
+- **Input sanitization** for user data
+- **Secure API communication** with GMPays
 
-### 📦 Release
-- Included all Composer dependencies in release ZIP
-- No need to run `composer install` on server
-- Plugin ready to use immediately after installation
+### 📚 Documentation
+- **Updated configuration guide** with new webhook-based setup
+- **Added troubleshooting section** for common issues
+- **Included security best practices** and recommendations
 
-## [1.1.0] - 2024-12-15
+### 🧪 Technical Improvements
+- **Proper WordPress coding standards** compliance
+- **Eliminated code duplication** and improved maintainability
+- **Better error handling** and user feedback
+- **Optimized database queries** and reduced overhead
+- **Cleaner code structure** with logical method organization
 
-### ✨ Added
-- Project ID and HMAC Key authentication
-- Improved webhook configuration instructions
-- Better integration with GMPays SDK
-- Enhanced error handling and logging
+## [1.4.4] - 2024-12-18
 
-### 🔧 Changed
-- Removed sandbox mode (not available in GMPays)
-- Updated authentication flow
-- Improved webhook processing
+### ❌ Deprecated
+- **URL parameter-based return handling** - replaced with webhooks
+- **Manual cart restoration** - no longer needed
+- **Custom return URL configuration** - now automatic
 
-### 🐛 Fixed
-- Various minor bugs and improvements
+### ⚠️ Known Issues
+- Orders not updating when users return from gateway
+- Hooks not executing properly
+- Missing order status updates
+- Incompatible with GMPays terminal flow
 
-## [1.0.0] - 2024-12-10
+## [1.4.3] - 2024-12-17
 
-### ✨ Added
-- Initial release
-- Credit card payment processing
+### ✅ Added
+- Initial plugin release
+- Basic GMPays integration
+- HMAC and RSA authentication support
 - Multi-currency support
-- Webhook handling
-- Spanish/English localization
-- WooCommerce integration
-- GMPays API integration
+
+### ❌ Issues
+- Incorrect return URL handling
+- Missing webhook support
+- Incompatible with GMPays architecture
 
 ---
 
-## Migration Guide from v1.1.0 to v1.2.0
+## Migration Guide
 
-### ⚠️ Important: This is a breaking change update
-
-Due to the switch from HMAC to RSA signatures, you must follow these steps:
+### From v1.4.5 to v1.4.6
 
 1. **Backup your current configuration**
-2. **Generate new RSA keys** using the included script:
-   ```bash
-   cd wp-content/plugins/gmpays-woocommerce-gateway/
-   chmod +x setup-gmpays.sh
-   ./setup-gmpays.sh
-   ```
-3. **Upload your public key to GMPays**:
-   - Go to [cp.gmpays.com/project/sign](https://cp.gmpays.com/project/sign)
-   - Paste your public key in the "Public key" field
-   - Click "Generate signature HMAC" to regenerate the HMAC key
-4. **Update plugin settings**:
-   - Replace HMAC Key with RSA Private Key
-   - Copy the entire content of `private_key.pem` (including BEGIN/END lines)
-5. **Test the integration** with a small transaction
+2. **Update the plugin** to v1.4.6
+3. **Test with a small order** to verify API-based functionality
+4. **Check admin meta box** for payment details
+5. **Monitor debug logs** for API communication
 
-### 🔒 Security Notes
-- Keep your private key secure and never share it
-- The private key is stored encrypted in WordPress options
-- Public key is uploaded to GMPays for signature verification
-- All communications now use RSA-SHA256 signatures
+### From v1.4.4 to v1.4.6
+
+1. **Backup your current configuration**
+2. **Update the plugin** to v1.4.6
+3. **Configure API credentials** in WooCommerce settings
+4. **Test with a small order** to verify functionality
+5. **Check admin meta box** for payment details
+
+### Important Notes
+
+- **v1.4.6 is backward compatible** with v1.4.5 configurations
+- **API credentials are required** for proper functionality
+- **Webhooks are optional** and kept for future use
+- **Test thoroughly** before deploying to production
 
 ---
 
-For detailed installation instructions, see [README.md](README.md) and [INSTALLATION.md](INSTALLATION.md).
+## Support
+
+For technical support or questions about this update:
+
+1. Check the debug logs in WooCommerce → Status → Logs
+2. Verify GMPays API configuration
+3. Test API connection manually
+4. Contact the development team with specific error details
+
+---
+
+**Note**: This update resolves the fundamental limitations of GMPays terminal endpoint by implementing reliable API-based status checking as the primary method for order updates.

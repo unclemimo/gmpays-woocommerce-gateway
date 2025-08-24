@@ -1,8 +1,8 @@
 <?php
 /**
- * GMPays API Client Class - Corrected Version with proper RSA Implementation
+ * GMPays API Client Class - Refactored for Official API Structure
  *
- * Handles all API communications with GMPays payment processor using RSA signatures
+ * Handles all API communications with GMPays payment processor using correct endpoints
  *
  * @package GMPaysWooCommerceGateway
  */
@@ -29,9 +29,6 @@ class GMPays_API_Client {
     /** @var string */
     private $auth_method;
     
-    /** @var string */
-    private $gmpays_certificate;
-    
     /** @var bool */
     private $debug;
     
@@ -57,32 +54,7 @@ class GMPays_API_Client {
         }
         
         // Set API base URL (should come from GMPays settings)
-        $this->api_base_url = $api_url ?: 'https://paygate.gamemoney.com';
-        
-        // GMPays certificate for verifying their signatures
-        $this->gmpays_certificate = '-----BEGIN CERTIFICATE-----
-MIID3TCCAsWgAwIBAgIJANtAJ3UMiGLZMA0GCSqGSIb3DQEBCwUAMIGEMQswCQYD
-VQQGEwJDUjERMA8GA1UECAwIU2FuIEpvc2UxEjAQBgNVBAcMCVNhbnRhIEFuYTET
-MBEGA1UECgwKSUJTIFMuUi5MLjEeMBwGA1UEAwwVY2hlY2tpbi5nYW1lbW9uZXku
-Y29tMRkwFwYJKoZIhvcNAQkBFgpjZW9AaWJzLmNyMB4XDTE2MDkwNDA3MjY0OVoX
-DTI2MDkwNjA3MjY0OVowgYQxCzAJBgNVBAYTAkNSMREwDwYDVQQIDAhTYW4gSm9z
-ZTESMBAGA1UEBwwJU2FudGEgQW5hMRMwEQYDVQQKDApJQlMgUy5SLkwuMR4wHAYD
-VQQDDBVjaGVja2luLmdhbWVtb25leS5jb20xGTAXBgkqhkiG9w0BCQEWCmNlb0Bp
-YnMuY3IwggEiMA0GCSqGSIb3DQEBAQUAA4IBDwAwggEKAoIBAQDPK9ODW+BcqZ5P
-YlQWziyLzKImuE8EDn7XuE9ZDmpKiJxwDUKZHSQYH4QtHyx0qYAbIqIGrKemfTu1
-nvW9+O8yKLFLLcaXVaSLU7mpp8uSWasGbkLqE7xVLqxQZq1zrBSEPnKR1/dNxD83
-5pNzMLx7ki02t1J01MAj0FvQ3GemIAQU15m+w+9YKX8cUYEBm+h2KuY6uziLhJTM
-BAQRIXO3z4fkZhUi/0wpiy5Zxi2jbh07gab7me5dpxxwOs/Dt10S6J8qu+AAH0DE
-3diqQS4OcaCYJuIo/kJVxrn8TO2WKzSf2CBMWMzKtA2lOIMokC79gsrTFAasRM8j
-BQkvD5/TAgMBAAGjUDBOMB0GA1UdDgQWBBTqyL+faltohjM5faVuKxRUBCG25DAf
-BgNVHSMEGDAWgBTqyL+faltohjM5faVuKxRUBCG25DAMBgNVHRMEBTADAQH/MA0G
-CSqGSIb3DQEBCwUAA4IBAQBpnItyLrXE1RWdGE+xoJ2YEbjNtgEfzaypFPpVuMO0
-hvCV1rJJDS3zs/P1uSF0akqN4weSGOeFuFyGf3v2j40M1T1XdllOA8ucBv7Rfy2W
-l1rR2aU+Hd6rl0E/7lhtx3VUobgPVKZn8k7NMKkSMtF/f2cS9jI4i6gsJfFImMr9
-gWjEZAlmwQcnilZ6ZUhhn+0yHFbCoX8fETH/sZlofZOnN8EkETyqyfThIpTX41XH
-geivrSfScNQH1mWJuE0DXMobNrhyJpxHRJwXXQyck6TiDM8OETki4PBzjKk/Gsyc
-61gqP9VPE2AVVwKypWOJidMxMZ03n4+MlyTbz3mnBXL9
------END CERTIFICATE-----';
+        $this->api_base_url = $api_url ?: 'https://pay.gmpays.com';
         
         // Get debug setting from WooCommerce
         $settings = get_option('woocommerce_gmpays_credit_card_settings', array());
@@ -223,7 +195,7 @@ geivrSfScNQH1mWJuE0DXMobNrhyJpxHRJwXXQyck6TiDM8OETki4PBzjKk/Gsyc
     }
     
     /**
-     * Create an invoice/payment session
+     * Create an invoice/payment session via Terminal (recommended method)
      *
      * @param array $order_data Order data from WooCommerce
      * @return array|false Response data or false on failure
@@ -238,18 +210,17 @@ geivrSfScNQH1mWJuE0DXMobNrhyJpxHRJwXXQyck6TiDM8OETki4PBzjKk/Gsyc
         }
         
         try {
-            // Prepare invoice data according to GMPays API specification
+            // Prepare invoice data according to GMPays Terminal API specification
             $request_data = array(
                 'project' => strval($this->project_id),
                 'user' => strval($order_data['order_id']),
                 'ip' => $order_data['customer_ip'] ?? $_SERVER['REMOTE_ADDR'],
                 'amount' => number_format($order_data['amount'], 2, '.', ''),
-                'type' => 'card', // For credit card payment
                 'comment' => substr($order_data['description'], 0, 255),
                 'project_invoice' => strval($order_data['order_id']),
-                'wallet' => '', // Empty wallet for credit card payments
                 'success_url' => $order_data['return_url'],
                 'fail_url' => $order_data['cancel_url'],
+                'currency' => 'USD', // GMPays processes in USD
             );
             
             // Add optional fields
@@ -261,15 +232,24 @@ geivrSfScNQH1mWJuE0DXMobNrhyJpxHRJwXXQyck6TiDM8OETki4PBzjKk/Gsyc
                 $request_data['add_email'] = $order_data['customer_email'];
             }
             
+            if (!empty($order_data['customer_name'])) {
+                $name_parts = explode(' ', $order_data['customer_name'], 2);
+                if (count($name_parts) >= 2) {
+                    $request_data['add_first_name'] = $name_parts[0];
+                    $request_data['add_last_name'] = $name_parts[1];
+                } else {
+                    $request_data['add_first_name'] = $order_data['customer_name'];
+                }
+            }
+            
             // Generate signature
             $request_data['signature'] = $this->generate_signature($request_data);
             
-            $this->log('info', 'Creating invoice with project ID: ' . $this->project_id);
+            $this->log('info', 'Creating terminal invoice with project ID: ' . $this->project_id);
             $this->log('debug', 'Request data (without signature): ' . json_encode(array_diff_key($request_data, ['signature' => ''])));
             
-            // For credit card payments, we'll use the terminal approach as per GMPays documentation
-            // This creates a payment session and redirects to the payment terminal
-            $response = $this->send_request('/terminal/create', $request_data);
+            // Use the terminal/create endpoint as per GMPays documentation
+            $response = $this->send_request('/api/terminal/create', $request_data);
             
             if (!$response || !isset($response['state']) || $response['state'] !== 'success') {
                 $error_msg = isset($response['error']) ? $response['error'] : 'Unknown error';
@@ -283,7 +263,7 @@ geivrSfScNQH1mWJuE0DXMobNrhyJpxHRJwXXQyck6TiDM8OETki4PBzjKk/Gsyc
             
             // If no payment URL, construct it
             if (!$payment_url) {
-                $payment_url = $this->api_base_url . '/terminal/create';
+                $payment_url = $this->api_base_url . '/api/terminal/create';
             }
             
             return array(
@@ -352,127 +332,47 @@ geivrSfScNQH1mWJuE0DXMobNrhyJpxHRJwXXQyck6TiDM8OETki4PBzjKk/Gsyc
     }
     
     /**
-     * Verify webhook signature from GMPays
+     * Get invoice status from GMPays using the correct endpoint
      *
-     * @param array $data Webhook data including signature
-     * @return bool
-     */
-    public function verify_webhook_signature($data) {
-        if (!isset($data['signature'])) {
-            $this->log('error', 'No signature in webhook data');
-            return false;
-        }
-        
-        $received_signature = $data['signature'];
-        
-        // Create a copy of data without signature for verification
-        $verify_data = $data;
-        unset($verify_data['signature']);
-        
-        // Convert data to string
-        $string_to_verify = $this->array_to_string($verify_data);
-        
-        $this->log('debug', 'String to verify: ' . $string_to_verify);
-        
-        if ($this->auth_method === 'hmac') {
-            // Verify HMAC signature
-            if (empty($this->hmac_key)) {
-                $this->log('error', 'HMAC key not configured for verification');
-                return false;
-            }
-            
-            $expected_signature = hash_hmac('sha256', $string_to_verify, $this->hmac_key);
-            
-            if (hash_equals($expected_signature, $received_signature)) {
-                $this->log('info', 'HMAC webhook signature verified successfully');
-                return true;
-            } else {
-                $this->log('error', 'HMAC signature verification failed');
-                return false;
-            }
-            
-        } else {
-            // Verify RSA signature
-            // Get public key from GMPays certificate
-            $public_key = openssl_pkey_get_public($this->gmpays_certificate);
-            if (!$public_key) {
-                $this->log('error', 'Failed to extract public key from certificate');
-                return false;
-            }
-            
-            // Decode the signature from base64
-            $signature_binary = base64_decode($received_signature);
-            
-            // Verify signature
-            $result = openssl_verify($string_to_verify, $signature_binary, $public_key, OPENSSL_ALGO_SHA256);
-            openssl_free_key($public_key);
-            
-            if ($result === 1) {
-                $this->log('info', 'RSA webhook signature verified successfully');
-                return true;
-            } else {
-                $this->log('error', 'RSA signature verification failed');
-                return false;
-            }
-        }
-    }
-    
-    /**
-     * Process callback/webhook from GMPays
-     *
-     * @param array $data Webhook data
-     * @return array|false Processed data or false on failure
-     */
-    public function process_callback($data) {
-        try {
-            // Verify signature
-            if (!$this->verify_webhook_signature($data)) {
-                $this->log('error', 'Webhook signature verification failed');
-                return false;
-            }
-            
-            $this->log('info', 'Processing verified callback: ' . json_encode($data));
-            
-            return array(
-                'success' => true,
-                'data' => $data
-            );
-            
-        } catch (Exception $e) {
-            $this->log('error', 'Callback processing failed: ' . $e->getMessage());
-            return false;
-        }
-    }
-    
-    /**
-     * Get invoice status
-     *
-     * @param string $invoice_id Invoice ID
+     * @param string $invoice_id GMPays invoice ID or project_invoice
      * @return array|false Response data or false on failure
      */
     public function get_invoice_status($invoice_id) {
+        if (empty($invoice_id)) {
+            $this->log('error', 'Invoice ID is required to get status');
+            return false;
+        }
+        
         try {
+            // Prepare request data for status check using project_invoice
             $request_data = array(
                 'project' => strval($this->project_id),
-                'invoice' => $invoice_id,
+                'project_invoice' => strval($invoice_id),
             );
             
             // Generate signature
             $request_data['signature'] = $this->generate_signature($request_data);
             
-            $response = $this->send_request('/invoice/status', $request_data);
+            $this->log('info', 'Getting invoice status for project_invoice: ' . $invoice_id);
+            $this->log('debug', 'Status request data (without signature): ' . json_encode(array_diff_key($request_data, ['signature' => ''])));
             
-            if (!$response || !isset($response['success'])) {
+            // Send status request to GMPays API using the correct endpoint
+            $response = $this->send_request('/api/invoice/status', $request_data);
+            
+            if (!$response) {
+                $this->log('error', 'Failed to get invoice status for project_invoice: ' . $invoice_id);
                 return false;
             }
             
-            $this->log('info', 'Invoice status retrieved');
-            
-            return array(
-                'success' => true,
-                'status' => $response['data']['status'] ?? 'unknown',
-                'data' => $response
-            );
+            if (isset($response['state']) && $response['state'] === 'success') {
+                $this->log('info', 'Invoice status retrieved successfully for project_invoice: ' . $invoice_id);
+                $this->log('debug', 'Status response: ' . json_encode($response));
+                return $response;
+            } else {
+                $error_msg = isset($response['error']) ? $response['error'] : 'Unknown error';
+                $this->log('error', 'Failed to get invoice status: ' . $error_msg);
+                return false;
+            }
             
         } catch (Exception $e) {
             $this->log('error', 'Get invoice status error: ' . $e->getMessage());

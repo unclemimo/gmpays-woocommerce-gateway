@@ -1,268 +1,207 @@
-# GMPays WooCommerce Gateway Testing Guide
+# GMPays WooCommerce Gateway - Testing Guide
 
-## Pre-Testing Checklist
+This guide will help you test the new webhook-based architecture to ensure it's working correctly.
 
-Before testing, ensure you have:
+## 🧪 Pre-Testing Checklist
 
-1. ✅ Plugin activated and configured
-2. ✅ GMPays control panel configured with correct URLs
-3. ✅ Test payment credentials ready
-4. ✅ Debug logging enabled
-5. ✅ WooCommerce test mode enabled (if applicable)
+Before running tests, ensure:
 
-## Test Scenarios
+- [ ] Plugin is activated and configured
+- [ ] GMPays webhook URL is set: `https://yoursite.com/wp-json/gmpays/v1/webhook`
+- [ ] Debug mode is enabled in plugin settings
+- [ ] Test orders are enabled in WooCommerce
+- [ ] SSL certificate is valid (for production testing)
+
+## 🔍 Test Scenarios
 
 ### 1. Basic Gateway Functionality
 
-#### Test: Payment Method Display
-- **Action**: Go to checkout page
-- **Expected**: GMPays Credit Card option appears in payment methods
-- **Check**: Payment method is visible and selectable
+#### Test: Gateway Display
+1. Go to your store's checkout page
+2. Verify GMPays Credit Card appears as payment option
+3. Check that gateway title and description display correctly
 
 #### Test: Order Creation
-- **Action**: Complete checkout with GMPays
-- **Expected**: Order created with "pending payment" status
-- **Check**: Order appears in WooCommerce admin
+1. Add items to cart
+2. Proceed to checkout
+3. Select GMPays Credit Card payment method
+4. Complete checkout process
+5. Verify order is created with "pending" status
 
-### 2. Return URL Processing
+**Expected Result**: Order created successfully with pending status
 
-#### Test: Successful Payment Return
-- **Action**: Simulate successful payment return
-- **URL**: `https://yourdomain.com/?gmpays_success=1&order_id=123`
-- **Expected**: 
-  - Order status changes to "on-hold"
-  - Note added: "Payment received via GMPays - Order placed on hold for confirmation"
-  - No WordPress errors
-- **Check**: Order status and notes in admin
+### 2. Payment Processing Flow
 
-#### Test: Failed Payment Return
-- **Action**: Simulate failed payment return
-- **URL**: `https://yourdomain.com/?gmpays_failure=1&order_id=123&reason=insufficient_funds`
-- **Expected**:
-  - Order status changes to "failed"
-  - Note added: "Payment failed via GMPays: insufficient_funds"
-  - Cart items restored (if applicable)
-- **Check**: Order status, notes, and cart state
+#### Test: Redirect to GMPays
+1. Complete checkout with GMPays payment method
+2. Verify redirect to GMPays payment terminal
+3. Check that order ID is passed correctly
 
-#### Test: Cancelled Payment Return
-- **Action**: Simulate cancelled payment return
-- **URL**: `https://yourdomain.com/?gmpays_cancelled=1&order_id=123`
-- **Expected**:
-  - Order status changes to "cancelled"
-  - Note added: "Payment cancelled by customer via GMPays"
-  - Cart items restored (if applicable)
-- **Check**: Order status, notes, and cart state
+**Expected Result**: Customer redirected to GMPays with correct order data
 
-### 3. Webhook Processing
+#### Test: Return from GMPays (Success)
+1. Complete payment on GMPays (use test card)
+2. Return to your store via success URL
+3. Check order status and notes
 
-#### Test: Webhook Notification
-- **Action**: Send test webhook from GMPays
-- **Endpoint**: `https://yourdomain.com/wp-json/gmpays/v1/webhook`
-- **Expected**:
-  - Webhook received and processed
-  - Order status updated accordingly
-  - Log entry created
-- **Check**: Webhook logs and order status
+**Expected Result**: Order status updated to "on-hold" with payment note
 
-#### Test: Signature Verification
-- **Action**: Send webhook with invalid signature
-- **Expected**:
-  - Webhook rejected
-  - Error logged
-  - Order status unchanged
-- **Check**: Webhook logs for rejection
+#### Test: Return from GMPays (Failure)
+1. Fail payment on GMPays (use declined card)
+2. Return to your store via failure URL
+3. Check order status and notes
 
-### 4. Error Handling
+**Expected Result**: Order status updated to "failed" with failure note
 
-#### Test: Invalid Order ID
-- **Action**: Access return URL with non-existent order ID
-- **Expected**: Graceful handling, no fatal errors
-- **Check**: Error logs and user experience
+#### Test: Return from GMPays (Cancellation)
+1. Cancel payment on GMPays
+2. Return to your store via cancel URL
+3. Check order status and notes
 
-#### Test: Missing Parameters
-- **Action**: Access return URL without required parameters
-- **Expected**: Graceful handling, no fatal errors
-- **Check**: Error logs and user experience
+**Expected Result**: Order status updated to "cancelled" with cancellation note
 
-## Manual Testing Steps
+### 3. Webhook Functionality
 
-### Step 1: Configure Test Environment
+#### Test: Webhook Endpoint Accessibility
+1. Test webhook URL: `https://yoursite.com/wp-json/gmpays/v1/webhook`
+2. Verify endpoint responds (should return 200 OK)
+3. Check for any error messages
 
-1. **Enable Debug Mode**:
-   - Go to WooCommerce > Settings > Payments
-   - Click on GMPays Credit Card
-   - Check "Enable logging"
+**Expected Result**: Webhook endpoint accessible and responding
 
-2. **Set Minimum Test Amount**:
-   - Ensure minimum amount is set to 1.00 EUR
+#### Test: Webhook Processing
+1. Create a test order
+2. Simulate webhook notification from GMPays
+3. Check order status update
+4. Verify order notes are added
 
-3. **Verify URLs**:
-   - Check all return URLs are accessible
-   - Verify webhook endpoint responds
+**Expected Result**: Order status updated via webhook with proper notes
 
-### Step 2: Create Test Order
+### 4. Admin Interface
 
-1. **Add Product to Cart**:
-   - Add any product meeting minimum amount
-   - Proceed to checkout
+#### Test: Payment Meta Box
+1. Go to WooCommerce → Orders
+2. Click on a GMPays order
+3. Look for "GMPays Payment Details" meta box
+4. Verify payment information displays correctly
 
-2. **Select GMPays**:
-   - Choose GMPays Credit Card payment method
-   - Complete checkout
+**Expected Result**: Meta box shows payment details and status
 
-3. **Verify Order Creation**:
-   - Check order status is "pending payment"
-   - Note the order ID
+#### Test: Manual Status Check
+1. From order page, click "Check Payment Status" button
+2. Verify AJAX request completes
+3. Check for status update or error message
 
-### Step 3: Test Return URLs
+**Expected Result**: Button works and provides feedback
 
-1. **Test Success Return**:
-   - Manually visit: `https://yourdomain.com/?gmpays_success=1&order_id=YOUR_ORDER_ID`
-   - Verify order status changes to "on-hold"
-   - Check notes are added
+### 5. Fallback Mechanisms
 
-2. **Test Failure Return**:
-   - Manually visit: `https://yourdomain.com/?gmpays_failure=1&order_id=YOUR_ORDER_ID&reason=test_failure`
-   - Verify order status changes to "failed"
-   - Check notes are added
+#### Test: API Status Polling
+1. Disable webhooks temporarily
+2. Complete a test payment
+3. Return to thank you page
+4. Check if status is polled from API
 
-3. **Test Cancellation Return**:
-   - Manually visit: `https://yourdomain.com/?gmpays_cancelled=1&order_id=YOUR_ORDER_ID`
-   - Verify order status changes to "cancelled"
-   - Check notes are added
+**Expected Result**: Order status updated via API polling
 
-### Step 4: Test Webhooks
+#### Test: Error Handling
+1. Test with invalid order ID
+2. Test with missing payment data
+3. Test with API connection failures
+4. Verify error messages are user-friendly
 
-1. **Send Test Webhook**:
-   - Use GMPays test environment
-   - Send webhook to your endpoint
-   - Verify processing
+**Expected Result**: Graceful error handling with helpful messages
 
-2. **Check Logs**:
-   - Review webhook logs
-   - Verify order updates
+## 🐛 Debugging Tests
 
-## Automated Testing
-
-### Unit Tests
-
-Run the following tests to verify functionality:
-
-```bash
-# Test gateway class
-php -r "
-require_once 'wp-content/plugins/gmpays-woocommerce-gateway/includes/class-wc-gateway-gmpays-credit-card.php';
-echo 'Gateway class loaded successfully\n';
-"
-
-# Test webhook handler
-php -r "
-require_once 'wp-content/plugins/gmpays-woocommerce-gateway/includes/class-gmpays-webhook-handler.php';
-echo 'Webhook handler loaded successfully\n';
-"
-```
-
-### Integration Tests
-
-1. **Test Order Flow**:
-   - Create order → Process payment → Handle return → Verify status
-
-2. **Test Webhook Flow**:
-   - Send webhook → Process notification → Update order → Verify changes
-
-## Debug Information
-
-### Enable Debug Logging
-
-```php
-// In wp-config.php (for development only)
-define('WP_DEBUG', true);
-define('WP_DEBUG_LOG', true);
-
-// In plugin settings
-// Enable "Enable logging" option
-```
+### Enable Debug Mode
+1. Go to WooCommerce → Settings → Payments → GMPays Credit Card
+2. Check "Enable logging" option
+3. Save changes
 
 ### Check Logs
+1. Go to WooCommerce → Status → Logs
+2. Look for `gmpays-gateway` log files
+3. Review recent entries for errors or warnings
 
-1. **Gateway Logs**: `wp-content/uploads/wc-logs/gmpays-gateway-*.log`
-2. **Webhook Logs**: `wp-content/uploads/wc-logs/gmpays-webhook-*.log`
-3. **WordPress Debug Log**: `wp-content/debug.log`
+### Common Log Entries
+- `GMPays DEBUG: handle_payment_return called for order ID: X`
+- `GMPays DEBUG: Processing success return for order X`
+- `GMPays DEBUG: Order status updated to on-hold`
+- `GMPays ERROR: Failed to update order status`
 
-### Common Debug Commands
+## 🔧 Manual Testing Tools
 
+### Test Webhook Endpoint
 ```bash
-# Check if plugin is active
-wp plugin list | grep gmpays
-
-# Check WooCommerce logs
-wp wc log list
-
-# Test webhook endpoint
-curl -X POST https://yourdomain.com/wp-json/gmpays/v1/webhook
-
-# Check order status
-wp wc order list --limit=5
+curl -X POST https://yoursite.com/wp-json/gmpays/v1/webhook \
+  -H "Content-Type: application/json" \
+  -d '{"test": "webhook"}'
 ```
 
-## Expected Results
+### Test API Connection
+1. Use admin "Check Payment Status" button
+2. Check browser developer tools for AJAX requests
+3. Verify response format and content
 
-### Successful Test Run
+### Test Order Status Updates
+1. Manually change order status in admin
+2. Check if hooks are triggered
+3. Verify order notes are added
 
-✅ **No WordPress Fatal Errors**
-✅ **Orders Update Correctly**
-✅ **Notes Added to Orders**
-✅ **Webhooks Processed**
-✅ **Logs Generated**
-✅ **Cart State Managed**
+## ✅ Success Criteria
 
-### Common Issues and Solutions
+A successful test run should demonstrate:
 
-#### Issue: Orders Not Updating
-- **Check**: Return URL configuration in GMPays
-- **Verify**: Plugin hooks are working
-- **Debug**: Enable logging and check logs
+- [ ] Gateway displays correctly on checkout
+- [ ] Orders are created with proper status
+- [ ] Redirects to GMPays work correctly
+- [ ] Returns from GMPays update order status
+- [ ] Webhooks process notifications
+- [ ] Admin interface shows payment details
+- [ ] Manual status checking works
+- [ ] Error handling is graceful
+- [ ] Logging provides useful information
 
-#### Issue: WordPress Errors
-- **Check**: Plugin compatibility with WordPress version
-- **Verify**: No conflicting plugins
-- **Debug**: Check error logs
+## 🚨 Common Issues
 
-#### Issue: Webhooks Not Working
-- **Check**: Webhook endpoint accessibility
-- **Verify**: Signature verification
-- **Debug**: Test with simple payload
+### Orders Not Updating
+- Check webhook URL configuration
+- Verify GMPays is sending notifications
+- Check server logs for errors
+- Test webhook endpoint accessibility
 
-## Post-Testing
+### Gateway Not Displaying
+- Verify plugin is activated
+- Check WooCommerce settings
+- Ensure minimum amount requirements are met
+- Check for JavaScript errors
 
-### Cleanup
+### Webhook Failures
+- Verify SSL certificate is valid
+- Check server firewall settings
+- Ensure webhook endpoint is accessible
+- Verify signature verification is working
 
-1. **Delete Test Orders**: Remove test orders from admin
-2. **Clear Logs**: Clean up test log files
-3. **Reset Settings**: Restore production settings
+## 📞 Support
 
-### Documentation
+If tests fail or you encounter issues:
 
-1. **Update Configuration**: Document any changes needed
-2. **Note Issues**: Record any problems encountered
-3. **Plan Production**: Schedule production deployment
+1. **Check debug logs** for specific error messages
+2. **Verify configuration** matches documentation
+3. **Test webhook endpoint** accessibility
+4. **Contact support** with specific error details
 
-## Support
+## 🔄 Post-Testing
 
-If you encounter issues during testing:
+After successful testing:
 
-1. Check the debug logs first
-2. Verify GMPays configuration
-3. Test with minimal setup
-4. Contact ElGrupito Development Team
+1. **Disable test mode** if using test environment
+2. **Review logs** for any warnings or errors
+3. **Document any issues** found during testing
+4. **Update configuration** if needed
+5. **Monitor production** for any issues
 
-## Production Checklist
+---
 
-Before going live:
-
-- [ ] All tests pass
-- [ ] Debug mode disabled
-- [ ] Production GMPays credentials configured
-- [ ] HTTPS enabled
-- [ ] Monitoring configured
-- [ ] Backup strategy in place
+**Note**: This testing guide covers the new webhook-based architecture. Previous URL parameter-based testing methods are no longer applicable.

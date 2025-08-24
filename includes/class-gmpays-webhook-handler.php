@@ -1,8 +1,8 @@
 <?php
 /**
- * GMPays Webhook Handler Class - Updated for RSA Authentication
+ * GMPays Webhook Handler Class - Clean Implementation
  *
- * Handles webhook notifications from GMPays payment processor using RSA signatures
+ * Handles webhook notifications from GMPays payment processor using proper API structure
  *
  * @package GMPaysWooCommerceGateway
  */
@@ -17,551 +17,386 @@ if (!defined('ABSPATH')) {
  */
 class GMPays_Webhook_Handler {
     
-    /** @var string GMPays certificate for signature verification */
-    private static $gmpays_certificate = '-----BEGIN CERTIFICATE-----
-MIID3TCCAsWgAwIBAgIJANtAJ3UMiGLZMA0GCSqGSIb3DQEBCwUAMIGEMQswCQYD
-VQQGEwJDUjERMA8GA1UECAwIU2FuIEpvc2UxEjAQBgNVBAcMCVNhbnRhIEFuYTET
-MBEGA1UECgwKSUJTIFMuUi5MLjEeMBwGA1UEAwwVY2hlY2tpbi5nYW1lbW9uZXku
-Y29tMRkwFwYJKoZIhvcNAQkBFgpjZW9AaWJzLmNyMB4XDTE2MDkwNDA3MjY0OVoX
-DTI2MDkwNjA3MjY0OVowgYQxCzAJBgNVBAYTAkNSMREwDwYDVQQIDAhTYW4gSm9z
-ZTESMBAGA1UEBwwJU2FudGEgQW5hMRMwEQYDVQQKDApJQlMgUy5SLkwuMR4wHAYD
-VQQDDBVjaGVja2luLmdhbWVtb25leS5jb20xGTAXBgkqhkiG9w0BCQEWCmNlb0Bp
-YnMuY3IwggEiMA0GCSqGSIb3DQEBAQUAA4IBDwAwggEKAoIBAQDPK9ODW+BcqZ5P
-YlQWziyLzKImuE8EDn7XuE9ZDmpKiJxwDUKZHSQYH4QtHyx0qYAbIqIGrKemfTu1
-nvW9+O8yKLFLLcaXVaSLU7mpp8uSWasGbkLqE7xVLqxQZq1zrBSEPnKR1/dNxD83
-5pNzMLx7ki02t1J01MAj0FvQ3GemIAQU15m+w+9YKX8cUYEBm+h2KuY6uziLhJTM
-BAQRIXO3z4fkZhUi/0wpiy5Zxi2jbh07gab7me5dpxxwOs/Dt10S6J8qu+AAH0DE
-3diqQS4OcaCYJuIo/kJVxrn8TO2WKzSf2CBMWMzKtA2lOIMokC79gsrTFAasRM8j
-BQkvD5/TAgMBAAGjUDBOMB0GA1UdDgQWBBTqyL+faltohjM5faVuKxRUBCG25DAf
-BgNVHSMEGDAWgBTqyL+faltohjM5faVuKxRUBCG25DAMBgNVHRMEBTADAQH/MA0G
-CSqGSIb3DQEBCwUAA4IBAQBpnItyLrXE1RWdGE+xoJ2YEbjNtgEfzaypFPpVuMO0
-hvCV1rJJDS3zs/P1uSF0akqN4weSGOeFuFyGf3v2j40M1T1XdllOA8ucBv7Rfy2W
-l1rR2aU+Hd6rl0E/7lhtx3VUobgPVKZn8k7NMKkSMtF/f2cS9jI4i6gsJfFImMr9
-gWjEZAlmwQcnilZ6ZUhhn+0yHFbCoX8fETH/sZlofZOnN8EkETyqyfThIpTX41XH
-geivrSfScNQH1mWJuE0DXMobNrhyJpxHRJwXXQyck6TiDM8OETki4PBzjKk/Gsyc
-61gqP9VPE2AVVwKypWOJidMxMZ03n4+MlyTbz3mnBXL9
------END CERTIFICATE-----';
+    /** @var GMPays_API_Client */
+    private $api_client;
+    
+    /** @var GMPays_Currency_Manager */
+    private $currency_manager;
     
     /**
-     * Handle webhook request
-     *
-     * @param WP_REST_Request $request Webhook request
-     * @return WP_REST_Response Response
+     * Constructor
      */
-    public static function handle_webhook($request) {
-        $body = $request->get_body();
-        $headers = $request->get_headers();
+    public function __construct() {
+        $this->api_client = new GMPays_API_Client();
+        $this->currency_manager = new GMPays_Currency_Manager();
         
-        // Get gateway settings for debug mode
-        $gateway_settings = get_option('woocommerce_gmpays_credit_card_settings', array());
-        $debug_mode = isset($gateway_settings['debug']) && $gateway_settings['debug'] === 'yes';
+        // Register webhook endpoint
+        add_action('rest_api_init', array($this, 'register_webhook_endpoint'));
         
-        if ($debug_mode) {
-            wc_get_logger()->debug('GMPays webhook received - Headers: ' . print_r($headers, true), array('source' => 'gmpays-webhook'));
-            wc_get_logger()->debug('GMPays webhook received - Body: ' . $body, array('source' => 'gmpays-webhook'));
-        } else {
-            wc_get_logger()->info('GMPays webhook received', array('source' => 'gmpays-webhook'));
-        }
+        // Register legacy webhook endpoint for backward compatibility
+        add_action('init', array($this, 'register_legacy_webhook_endpoint'));
         
-        try {
-            // Parse webhook data
-            $webhook_data = json_decode($body, true);
-            
-            if (!$webhook_data) {
-                wc_get_logger()->error('GMPays webhook data is invalid JSON', array('source' => 'gmpays-webhook'));
-                return new WP_REST_Response(array('error' => 'Invalid JSON'), 400);
-            }
-            
-            if ($debug_mode) {
-                wc_get_logger()->debug('GMPays webhook data parsed: ' . print_r($webhook_data, true), array('source' => 'gmpays-webhook'));
-            }
-            
-            // Verify webhook signature using RSA
-            if (!self::verify_webhook_signature($webhook_data)) {
-                wc_get_logger()->error('GMPays webhook signature verification failed', array('source' => 'gmpays-webhook'));
-                return new WP_REST_Response(array('error' => 'Invalid signature'), 401);
-            }
-            
-            // Process webhook event
-            $result = self::process_webhook_event($webhook_data);
-            
-            if ($result) {
-                if ($debug_mode) {
-                    wc_get_logger()->debug('GMPays webhook processed successfully', array('source' => 'gmpays-webhook'));
-                }
-                return new WP_REST_Response(array('status' => 'success'), 200);
-            } else {
-                wc_get_logger()->error('GMPays webhook processing failed', array('source' => 'gmpays-webhook'));
-                return new WP_REST_Response(array('error' => 'Processing failed'), 500);
-            }
-            
-        } catch (Exception $e) {
-            wc_get_logger()->error('GMPays webhook processing error: ' . $e->getMessage(), array('source' => 'gmpays-webhook'));
-            return new WP_REST_Response(array('error' => 'Internal error'), 500);
+        // Register legacy return URL handlers
+        add_action('init', array($this, 'handle_legacy_return_urls'));
+        
+        if (defined('GMPAYS_DEBUG') && GMPAYS_DEBUG) {
+            error_log('GMPays: Webhook handler initialized');
         }
     }
     
     /**
-     * Verify webhook signature using RSA
-     *
-     * @param array $webhook_data Webhook data
-     * @return boolean True if signature is valid
+     * Register REST API webhook endpoint
      */
-    private static function verify_webhook_signature($webhook_data) {
-        // Check if signature exists in webhook data
-        if (!isset($webhook_data['signature'])) {
-            wc_get_logger()->warning('GMPays webhook signature missing', array('source' => 'gmpays-webhook'));
-            return false;
-        }
-        
-        $received_signature = $webhook_data['signature'];
-        
-        // Create a copy of data without signature for verification
-        $verify_data = $webhook_data;
-        unset($verify_data['signature']);
-        
-        // Convert data to string according to GMPays specification
-        $string_to_verify = self::array_to_string($verify_data);
-        
-        wc_get_logger()->debug('String to verify: ' . $string_to_verify, array('source' => 'gmpays-webhook'));
-        
-        // Get public key from GMPays certificate
-        $public_key = openssl_pkey_get_public(self::$gmpays_certificate);
-        if (!$public_key) {
-            wc_get_logger()->error('Failed to extract public key from certificate', array('source' => 'gmpays-webhook'));
-            return false;
-        }
-        
-        // Decode the signature from base64
-        $signature_binary = base64_decode($received_signature);
-        
-        // Verify signature using SHA256
-        $result = openssl_verify($string_to_verify, $signature_binary, $public_key, OPENSSL_ALGO_SHA256);
-        
-        if ($result === 1) {
-            wc_get_logger()->info('Webhook signature verified successfully', array('source' => 'gmpays-webhook'));
-            return true;
-        } elseif ($result === 0) {
-            wc_get_logger()->error('Webhook signature verification failed', array('source' => 'gmpays-webhook'));
-            return false;
-        } else {
-            wc_get_logger()->error('Error during signature verification: ' . openssl_error_string(), array('source' => 'gmpays-webhook'));
-            return false;
-        }
+    public function register_webhook_endpoint() {
+        register_rest_route('gmpays/v1', '/webhook', array(
+            'methods' => 'POST',
+            'callback' => array($this, 'handle_webhook'),
+            'permission_callback' => '__return_true',
+        ));
     }
     
     /**
-     * Convert array to string for signature verification according to GMPays specification
-     *
-     * @param array $data Data to convert
-     * @return string Formatted string for signature
+     * Register legacy webhook endpoint
      */
-    private static function array_to_string($data) {
-        // Sort by keys alphabetically
-        ksort($data);
+    public function register_legacy_webhook_endpoint() {
+        add_action('wp_loaded', array($this, 'process_webhook'));
+    }
+    
+    /**
+     * Handle webhook notification from GMPays
+     */
+    public function handle_webhook($request) {
+        $logger = wc_get_logger();
+        $logger->info('GMPays webhook received', array('source' => 'gmpays-gateway'));
         
-        $result = '';
+        // Get webhook data
+        $webhook_data = $request->get_json_params();
         
-        foreach ($data as $key => $value) {
-            if (is_array($value)) {
-                // For arrays, process recursively
-                if (self::is_assoc($value)) {
-                    // Associative array
-                    $result .= $key . ':' . self::array_to_string_recursive($value) . ';';
-                } else {
-                    // Indexed array
-                    $result .= $key . ':';
-                    foreach ($value as $index => $item) {
-                        $result .= $index . ':' . $item . ';';
-                    }
-                    $result .= ';';
-                }
-            } else {
-                // For scalar values
-                $result .= $key . ':' . $value . ';';
+        if (empty($webhook_data)) {
+            $logger->error('GMPays webhook: Empty data received', array('source' => 'gmpays-gateway'));
+            return new WP_Error('empty_data', 'Empty webhook data', array('status' => 400));
+        }
+        
+        $logger->info('GMPays webhook data: ' . json_encode($webhook_data), array('source' => 'gmpays-gateway'));
+        
+        // Process webhook data
+        $result = $this->process_webhook_data($webhook_data);
+        
+        if (is_wp_error($result)) {
+            $logger->error('GMPays webhook error: ' . $result->get_error_message(), array('source' => 'gmpays-gateway'));
+            return $result;
+        }
+        
+        $logger->info('GMPays webhook processed successfully', array('source' => 'gmpays-gateway'));
+        
+        return new WP_REST_Response(array('status' => 'success'), 200);
+    }
+    
+    /**
+     * Process webhook data
+     */
+    private function process_webhook_data($webhook_data) {
+        // Extract order ID from webhook data
+        $order_id = $this->extract_order_id_from_webhook($webhook_data);
+        
+        if (!$order_id) {
+            return new WP_Error('no_order_id', 'No order ID found in webhook data');
+        }
+        
+        // Get order
+        $order = wc_get_order($order_id);
+        if (!$order) {
+            return new WP_Error('order_not_found', 'Order not found: ' . $order_id);
+        }
+        
+        // Check if order is already processed
+        if ($order->is_paid() || in_array($order->get_status(), array('processing', 'completed', 'on-hold'))) {
+            return true; // Already processed
+        }
+        
+        // Extract payment status
+        $payment_status = $this->extract_payment_status_from_webhook($webhook_data);
+        
+        if (!$payment_status) {
+            return new WP_Error('no_payment_status', 'No payment status found in webhook data');
+        }
+        
+        // Process payment status
+        $this->process_payment_status($order, $payment_status, $webhook_data);
+        
+        return true;
+    }
+    
+    /**
+     * Extract order ID from webhook data
+     */
+    private function extract_order_id_from_webhook($webhook_data) {
+        // Try different possible fields for order ID
+        $possible_fields = array('order_id', 'orderId', 'order', 'id', 'invoice_id', 'invoiceId');
+        
+        foreach ($possible_fields as $field) {
+            if (isset($webhook_data[$field])) {
+                return $webhook_data[$field];
             }
         }
         
-        return $result;
+        return null;
     }
     
     /**
-     * Recursive array to string conversion
+     * Extract payment status from webhook data
      */
-    private static function array_to_string_recursive($data) {
-        ksort($data);
-        $result = '';
+    private function extract_payment_status_from_webhook($webhook_data) {
+        // Try different possible fields for payment status
+        $possible_fields = array('status', 'payment_status', 'state', 'paymentState', 'result');
         
-        foreach ($data as $key => $value) {
-            if (is_array($value)) {
-                $result .= $key . ':' . self::array_to_string_recursive($value) . ';';
-            } else {
-                $result .= $key . ':' . $value . ';';
+        foreach ($possible_fields as $field) {
+            if (isset($webhook_data[$field])) {
+                return $webhook_data[$field];
             }
         }
         
-        return $result;
+        return null;
     }
     
     /**
-     * Check if array is associative
+     * Process payment status
      */
-    private static function is_assoc($arr) {
-        if (!is_array($arr)) return false;
-        return array_keys($arr) !== range(0, count($arr) - 1);
-    }
-    
-    /**
-     * Process webhook event
-     *
-     * @param array $webhook_data Webhook data
-     * @return boolean True if processed successfully
-     */
-    private static function process_webhook_event($webhook_data) {
-        // Check for required fields
-        if (!isset($webhook_data['type']) || !isset($webhook_data['data'])) {
-            wc_get_logger()->error('GMPays webhook missing required fields', array('source' => 'gmpays-webhook'));
-            return false;
-        }
+    private function process_payment_status($order, $payment_status, $webhook_data) {
+        $logger = wc_get_logger();
+        $order_id = $order->get_id();
         
-        $event_type = $webhook_data['type'];
-        $event_data = $webhook_data['data'];
+        $logger->info('Processing payment status for order ' . $order_id . ': ' . $payment_status, array('source' => 'gmpays-gateway'));
         
-        wc_get_logger()->info('Processing GMPays webhook event: ' . $event_type, array('source' => 'gmpays-webhook'));
-        
-        // Handle different event types based on GMPays documentation
-        switch ($event_type) {
-            case 'payment':
-            case 'invoice.paid':
-            case 'Paid': // GMPays status value
-                return self::handle_payment_success($event_data);
+        switch (strtolower($payment_status)) {
+            case 'paid':
+            case 'success':
+            case 'completed':
+                $this->process_successful_payment($order, $webhook_data);
+                break;
                 
-            case 'payment.failed':
-            case 'invoice.failed':
-            case 'Refused': // GMPays status value
-                return self::handle_payment_failed($event_data);
+            case 'failed':
+            case 'refused':
+            case 'error':
+                $this->process_failed_payment($order, $webhook_data);
+                break;
                 
-            case 'payment.cancelled':
-            case 'invoice.cancelled':
-            case 'New': // GMPays status value for cancelled/expired
-                return self::handle_payment_cancelled($event_data);
-                
-            case 'refund':
-            case 'invoice.refunded':
-            case 'Refund': // GMPays status value
-                return self::handle_refund($event_data);
-                
-            case 'Processing': // GMPays status value
-                wc_get_logger()->info('GMPays payment is processing: ' . $event_type, array('source' => 'gmpays-webhook'));
-                return true; // Acknowledge receipt
+            case 'cancelled':
+            case 'canceled':
+                $this->process_cancelled_payment($order, $webhook_data);
+                break;
                 
             default:
-                wc_get_logger()->info('Unhandled GMPays webhook event type: ' . $event_type, array('source' => 'gmpays-webhook'));
-                return true; // Return true to acknowledge receipt
+                $logger->warning('Unknown payment status: ' . $payment_status, array('source' => 'gmpays-gateway'));
+                break;
         }
     }
     
     /**
-     * Handle successful payment
-     *
-     * @param array $data Event data
-     * @return boolean
+     * Process successful payment
      */
-    private static function handle_payment_success($data) {
-        $order = self::get_order_from_webhook_data($data);
+    private function process_successful_payment($order, $webhook_data) {
+        $order_id = $order->get_id();
+        $logger = wc_get_logger();
         
-        if (!$order) {
-            wc_get_logger()->warning('Order not found for GMPays payment success webhook', array('source' => 'gmpays-webhook'));
-            return false;
-        }
+        $logger->info('Processing successful payment for order ' . $order_id, array('source' => 'gmpays-gateway'));
         
-        // Check if order is already paid
-        if ($order->is_paid()) {
-            wc_get_logger()->info('Order already paid, skipping GMPays webhook processing', array('source' => 'gmpays-webhook'));
-            return true;
-        }
+        // Get transaction details
+        $transaction_id = $webhook_data['transaction_id'] ?? $webhook_data['invoice_id'] ?? $order_id;
+        $amount = $webhook_data['amount'] ?? $order->get_total();
+        $currency = $webhook_data['currency'] ?? 'USD';
         
-        // Get invoice/transaction ID from various possible fields
-        $transaction_id = isset($data['project_invoice']) ? $data['project_invoice'] : 
-                         (isset($data['invoice']) ? $data['invoice'] : 
-                         (isset($data['id']) ? $data['id'] : 
-                         (isset($data['transaction_id']) ? $data['transaction_id'] : '')));
-        
-        // Complete payment and set order to on-hold (pending confirmation)
+        // Complete payment
         $order->payment_complete($transaction_id);
         $order->update_status('on-hold', __('Payment received via GMPays - Order placed on hold for confirmation', 'gmpays-woocommerce-gateway'));
         
-        // Add detailed order note (public)
-        $note = sprintf(
+        // Add order notes
+        $public_note = sprintf(
             __('Payment completed successfully via GMPays.\nTransaction ID: %s\nAmount: %s %s\nPayment Method: Credit Card', 'gmpays-woocommerce-gateway'),
             $transaction_id,
-            isset($data['amount']) ? $data['amount'] : $order->get_total(),
-            isset($data['currency']) ? strtoupper($data['currency']) : 'USD'
+            $amount,
+            strtoupper($currency)
         );
-        $order->add_order_note($note, false, false);
+        $order->add_order_note($public_note, false, false);
         
-        // Add private note with transaction details
         $private_note = sprintf(
-            __('GMPays Payment Success - Order #%s has been paid via GMPays. Transaction ID: %s. Order placed on hold for manual review.', 'gmpays-woocommerce-gateway'),
-            $order->get_order_number(),
-            $transaction_id
+            __('GMPays Payment Success - Order #%s payment completed successfully via GMPays. Transaction ID: %s. Amount: %s %s.', 'gmpays-woocommerce-gateway'),
+            $order_id,
+            $transaction_id,
+            $amount,
+            strtoupper($currency)
         );
         $order->add_order_note($private_note, false, true);
         
-        // Update payment metadata
+        // Update metadata
+        $order->update_meta_data('_gmpays_payment_status', 'success');
         $order->update_meta_data('_gmpays_transaction_id', $transaction_id);
-        $order->update_meta_data('_gmpays_payment_status', 'completed');
         $order->update_meta_data('_gmpays_payment_completed_at', current_time('mysql'));
         
-        // Set WooCommerce native transaction ID field
-        $order->set_transaction_id($transaction_id);
-        
-        if (isset($data['payment_method'])) {
-            $order->update_meta_data('_gmpays_payment_method_used', $data['payment_method']);
-        }
-        
-        if (isset($data['card_last4'])) {
-            $order->update_meta_data('_gmpays_card_last4', $data['card_last4']);
-        }
-        
-        if (isset($data['card_brand'])) {
-            $order->update_meta_data('_gmpays_card_brand', $data['card_brand']);
-        }
-        
         $order->save();
         
-        wc_get_logger()->info('GMPays payment success processed for order #' . $order->get_id(), array('source' => 'gmpays-webhook'));
-        
-        return true;
+        $logger->info('Order ' . $order_id . ' marked as successful', array('source' => 'gmpays-gateway'));
     }
     
     /**
-     * Handle failed payment
-     *
-     * @param array $data Event data
-     * @return boolean
+     * Process failed payment
      */
-    private static function handle_payment_failed($data) {
-        $order = self::get_order_from_webhook_data($data);
+    private function process_failed_payment($order, $webhook_data) {
+        $order_id = $order->get_id();
+        $logger = wc_get_logger();
         
-        if (!$order) {
-            wc_get_logger()->warning('Order not found for GMPays payment failed webhook', array('source' => 'gmpays-webhook'));
-            return false;
-        }
+        $logger->info('Processing failed payment for order ' . $order_id, array('source' => 'gmpays-gateway'));
         
-        // Update order status to failed
-        $order->update_status('failed', __('Payment failed via GMPays', 'gmpays-woocommerce-gateway'));
+        // Get failure details
+        $reason = $webhook_data['reason'] ?? $webhook_data['comment'] ?? __('Payment was refused by payment processor', 'gmpays-woocommerce-gateway');
         
-        // Get failure reason and invoice ID
-        $failure_reason = isset($data['reason']) ? $data['reason'] : 
-                         (isset($data['comment']) ? $data['comment'] : 
-                         __('Payment processing error', 'gmpays-woocommerce-gateway'));
+        // Update order status
+        $order->update_status('failed', sprintf(__('Payment failed via GMPays: %s', 'gmpays-woocommerce-gateway'), $reason));
         
-        $invoice_id = isset($data['project_invoice']) ? $data['project_invoice'] : 
-                     (isset($data['invoice']) ? $data['invoice'] : 'N/A');
-        
-        // Add detailed failure note (public)
-        $note = sprintf(
-            __('Payment failed via GMPays.\nInvoice ID: %s\nReason: %s\nPlease contact customer to retry payment.', 'gmpays-woocommerce-gateway'),
-            $invoice_id,
-            $failure_reason
+        // Add order notes
+        $public_note = sprintf(
+            __('Payment failed via GMPays.\nReason: %s\nPlease try again or contact support.', 'gmpays-woocommerce-gateway'),
+            $reason
         );
-        $order->add_order_note($note, false, false);
+        $order->add_order_note($public_note, false, false);
         
-        // Add private note with failure details
         $private_note = sprintf(
-            __('GMPays Payment Failure - Order #%s payment failed via GMPays. Invoice ID: %s. Reason: %s', 'gmpays-woocommerce-gateway'),
-            $order->get_order_number(),
-            $invoice_id,
-            $failure_reason
+            __('GMPays Payment Failed - Order #%s payment failed via GMPays. Reason: %s', 'gmpays-woocommerce-gateway'),
+            $order_id,
+            $reason
         );
         $order->add_order_note($private_note, false, true);
         
-        // Update payment metadata
+        // Update metadata
         $order->update_meta_data('_gmpays_payment_status', 'failed');
         $order->update_meta_data('_gmpays_payment_failed_at', current_time('mysql'));
-        
-        if (isset($data['reason'])) {
-            $order->update_meta_data('_gmpays_payment_failure_reason', $data['reason']);
-        }
+        $order->update_meta_data('_gmpays_payment_failure_reason', $reason);
         
         $order->save();
         
-        wc_get_logger()->info('GMPays payment failure processed for order #' . $order->get_id(), array('source' => 'gmpays-webhook'));
-        
-        return true;
+        $logger->info('Order ' . $order_id . ' marked as failed', array('source' => 'gmpays-gateway'));
     }
     
     /**
-     * Handle cancelled payment
-     *
-     * @param array $data Event data
-     * @return boolean
+     * Process cancelled payment
      */
-    private static function handle_payment_cancelled($data) {
-        $order = self::get_order_from_webhook_data($data);
+    private function process_cancelled_payment($order, $webhook_data) {
+        $order_id = $order->get_id();
+        $logger = wc_get_logger();
         
-        if (!$order) {
-            wc_get_logger()->warning('Order not found for GMPays payment cancelled webhook', array('source' => 'gmpays-webhook'));
-            return false;
-        }
+        $logger->info('Processing cancelled payment for order ' . $order_id, array('source' => 'gmpays-gateway'));
         
-        // Update order status to cancelled
+        // Update order status
         $order->update_status('cancelled', __('Payment cancelled via GMPays', 'gmpays-woocommerce-gateway'));
         
-        // Get invoice ID
-        $invoice_id = isset($data['project_invoice']) ? $data['project_invoice'] : 
-                     (isset($data['invoice']) ? $data['invoice'] : 'N/A');
+        // Add order notes
+        $public_note = __('Payment was cancelled via GMPays. You can try again or choose a different payment method.', 'gmpays-woocommerce-gateway');
+        $order->add_order_note($public_note, false, false);
         
-        // Add cancellation note (public)
-        $note = sprintf(
-            __('Payment cancelled via GMPays.\nInvoice ID: %s\nCustomer did not complete payment.', 'gmpays-woocommerce-gateway'),
-            $invoice_id
-        );
-        $order->add_order_note($note, false, false);
-        
-        // Add private note with cancellation details
         $private_note = sprintf(
-            __('GMPays Payment Cancellation - Order #%s payment was cancelled via GMPays. Invoice ID: %s. Customer did not complete payment.', 'gmpays-woocommerce-gateway'),
-            $order->get_order_number(),
-            $invoice_id
+            __('GMPays Payment Cancelled - Order #%s payment was cancelled via GMPays. Customer did not complete payment.', 'gmpays-woocommerce-gateway'),
+            $order_id
         );
         $order->add_order_note($private_note, false, true);
         
-        // Update payment metadata
+        // Update metadata
         $order->update_meta_data('_gmpays_payment_status', 'cancelled');
         $order->update_meta_data('_gmpays_payment_cancelled_at', current_time('mysql'));
         
         $order->save();
         
-        wc_get_logger()->info('GMPays payment cancellation processed for order #' . $order->get_id(), array('source' => 'gmpays-webhook'));
-        
-        return true;
+        $logger->info('Order ' . $order_id . ' marked as cancelled', array('source' => 'gmpays-gateway'));
     }
     
     /**
-     * Handle refund notification
-     *
-     * @param array $data Event data
-     * @return boolean
+     * Legacy webhook processing for backward compatibility
      */
-    private static function handle_refund($data) {
-        $order = self::get_order_from_webhook_data($data);
+    public function process_webhook() {
+        // Check if this is a GMPays webhook
+        if (!isset($_GET['gmpays_webhook']) && !isset($_POST['gmpays_webhook'])) {
+            return;
+        }
         
+        $logger = wc_get_logger();
+        $logger->info('GMPays legacy webhook received', array('source' => 'gmpays-gateway'));
+        
+        // Get webhook data from POST or GET
+        $webhook_data = !empty($_POST) ? $_POST : $_GET;
+        
+        $logger->info('GMPays legacy webhook data: ' . json_encode($webhook_data), array('source' => 'gmpays-gateway'));
+        
+        // Process webhook data
+        $this->process_webhook_data($webhook_data);
+    }
+    
+    /**
+     * Handle legacy return URLs for backward compatibility
+     */
+    public function handle_legacy_return_urls() {
+        // Handle success return
+        if (isset($_GET['gmpays_success']) && isset($_GET['order_id'])) {
+            $this->handle_success_return($_GET['order_id']);
+        }
+        
+        // Handle failure return
+        if (isset($_GET['gmpays_failure']) && isset($_GET['order_id'])) {
+            $this->handle_failure_return($_GET['order_id']);
+        }
+        
+        // Handle cancelled return
+        if (isset($_GET['gmpays_cancelled']) && isset($_GET['order_id'])) {
+            $this->handle_cancelled_return($_GET['order_id']);
+        }
+    }
+    
+    /**
+     * Handle success return
+     */
+    private function handle_success_return($order_id) {
+        $order = wc_get_order($order_id);
         if (!$order) {
-            wc_get_logger()->warning('Order not found for GMPays refund webhook', array('source' => 'gmpays-webhook'));
-            return false;
+            return;
         }
         
-        // Get refund details
-        $refund_id = isset($data['refund_id']) ? $data['refund_id'] : 
-                    (isset($data['invoice']) ? $data['invoice'] : 'N/A');
-        
-        $refund_amount = isset($data['amount']) ? $data['amount'] : 
-                        (isset($data['net_amount']) ? $data['net_amount'] : 'N/A');
-        
-        $refund_currency = isset($data['currency']) ? strtoupper($data['currency']) : 
-                          (isset($data['currency_project']) ? strtoupper($data['currency_project']) : 'USD');
-        
-        $refund_reason = isset($data['reason']) ? $data['reason'] : 
-                        (isset($data['comment']) ? $data['comment'] : __('No reason provided', 'gmpays-woocommerce-gateway'));
-        
-        // Add refund note (public)
-        $note = sprintf(
-            __('Refund processed via GMPays.\nRefund ID: %s\nAmount: %s %s\nReason: %s', 'gmpays-woocommerce-gateway'),
-            $refund_id,
-            $refund_amount,
-            $refund_currency,
-            $refund_reason
-        );
-        $order->add_order_note($note, false, false);
-        
-        // Add private note with refund details
-        $private_note = sprintf(
-            __('GMPays Refund Processed - Order #%s refund processed via GMPays. Refund ID: %s. Amount: %s %s. Reason: %s', 'gmpays-woocommerce-gateway'),
-            $order->get_order_number(),
-            $refund_id,
-            $refund_amount,
-            $refund_currency,
-            $refund_reason
-        );
-        $order->add_order_note($private_note, false, true);
-        
-        // Update refund metadata
-        $order->update_meta_data('_gmpays_refund_id', isset($data['refund_id']) ? $data['refund_id'] : '');
-        $order->update_meta_data('_gmpays_refund_processed_at', current_time('mysql'));
-        
-        $order->save();
-        
-        wc_get_logger()->info('GMPays refund processed for order #' . $order->get_id(), array('source' => 'gmpays-webhook'));
-        
-        return true;
+        // Redirect to thank you page
+        wp_redirect($this->get_return_url($order));
+        exit;
     }
     
     /**
-     * Get order from webhook data
-     *
-     * @param array $data Webhook data
-     * @return WC_Order|false Order object or false if not found
+     * Handle failure return
      */
-    private static function get_order_from_webhook_data($data) {
-        // Try to find order by project_invoice (GMPays specific field)
-        if (isset($data['project_invoice'])) {
-            $order = wc_get_order($data['project_invoice']);
-            if ($order) {
-                return $order;
-            }
+    private function handle_failure_return($order_id) {
+        $order = wc_get_order($order_id);
+        if (!$order) {
+            return;
         }
         
-        // Try to find order by invoice ID in metadata
-        if (isset($data['invoice'])) {
-            $orders = wc_get_orders(array(
-                'meta_key' => '_gmpays_invoice_id',
-                'meta_value' => $data['invoice'],
-                'limit' => 1,
-            ));
-            
-            if (!empty($orders)) {
-                return $orders[0];
-            }
+        // Redirect to checkout with error
+        wc_add_notice(__('Payment failed. Please try again.', 'gmpays-woocommerce-gateway'), 'error');
+        wp_redirect(wc_get_checkout_url());
+        exit;
+    }
+    
+    /**
+     * Handle cancelled return
+     */
+    private function handle_cancelled_return($order_id) {
+        $order = wc_get_order($order_id);
+        if (!$order) {
+            return;
         }
         
-        // Try to find by order ID in metadata
-        if (isset($data['metadata']['wc_order_id'])) {
-            $order = wc_get_order($data['metadata']['wc_order_id']);
-            if ($order) {
-                return $order;
-            }
-        }
-        
-        // Try to find by order key
-        if (isset($data['metadata']['wc_order_key'])) {
-            $order_id = wc_get_order_id_by_order_key($data['metadata']['wc_order_key']);
-            if ($order_id) {
-                return wc_get_order($order_id);
-            }
-        }
-        
-        // Try to find by add_fields data (GMPays specific)
-        if (isset($data['add_fields'])) {
-            if (isset($data['add_fields']['order_id'])) {
-                $order = wc_get_order($data['add_fields']['order_id']);
-                if ($order) {
-                    return $order;
-                }
-            }
-            
-            if (isset($data['add_fields']['order_key'])) {
-                $order_id = wc_get_order_id_by_order_key($data['add_fields']['order_key']);
-                if ($order_id) {
-                    return wc_get_order($order_id);
-                }
-            }
-        }
-        
-        // Log the data structure for debugging
-        wc_get_logger()->warning('Could not find order for GMPays webhook data: ' . json_encode($data), array('source' => 'gmpays-webhook'));
-        
-        return false;
+        // Redirect to checkout with notice
+        wc_add_notice(__('Payment was cancelled.', 'gmpays-woocommerce-gateway'), 'notice');
+        wp_redirect(wc_get_checkout_url());
+        exit;
+    }
+    
+    /**
+     * Get return URL for order
+     */
+    private function get_return_url($order) {
+        return $order->get_checkout_order_received_url();
     }
 }

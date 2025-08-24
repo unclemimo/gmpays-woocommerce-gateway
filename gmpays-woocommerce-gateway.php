@@ -3,7 +3,7 @@
  * Plugin Name: GMPays WooCommerce Payment Gateway
  * Plugin URI: https://elgrupito.com/
  * Description: Accept credit card payments via GMPays - International payment processor with support for multiple currencies, dual authentication (HMAC/RSA), enhanced order management, automatic status updates, minimum amount validation, failed payment handling, and comprehensive return URL management.
- * Version: 1.4.5
+ * Version: 1.5.0
  * Author: ElGrupito Development Team
  * Author URI: https://elgrupito.com/
  * Text Domain: gmpays-woocommerce-gateway
@@ -22,7 +22,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Define plugin constants
-define('GMPAYS_WC_GATEWAY_VERSION', '1.4.5');
+define('GMPAYS_WC_GATEWAY_VERSION', '1.5.0');
 define('GMPAYS_WC_GATEWAY_PLUGIN_FILE', __FILE__);
 define('GMPAYS_WC_GATEWAY_PLUGIN_PATH', plugin_dir_path(__FILE__));
 define('GMPAYS_WC_GATEWAY_PLUGIN_URL', plugin_dir_url(__FILE__));
@@ -61,23 +61,8 @@ class GMPaysWooCommerceGateway {
      * Constructor
      */
     public function __construct() {
-        // Set plugin constants
-        $this->set_constants();
-        
         // Initialize plugin
         add_action('plugins_loaded', array($this, 'init'), 0);
-    }
-    
-    /**
-     * Set plugin constants
-     */
-    private function set_constants() {
-        // Define plugin constants
-        define('GMPAYS_WC_GATEWAY_VERSION', '1.4.5');
-        define('GMPAYS_WC_GATEWAY_PLUGIN_FILE', __FILE__);
-        define('GMPAYS_WC_GATEWAY_PLUGIN_PATH', plugin_dir_path(__FILE__));
-        define('GMPAYS_WC_GATEWAY_PLUGIN_URL', plugin_dir_url(__FILE__));
-        define('GMPAYS_WC_GATEWAY_PLUGIN_BASENAME', plugin_basename(__FILE__));
     }
     
     /**
@@ -131,10 +116,6 @@ class GMPaysWooCommerceGateway {
         
         // Include payment gateway classes
         require_once GMPAYS_WC_GATEWAY_PLUGIN_PATH . 'includes/class-wc-gateway-gmpays-credit-card.php';
-        
-        // Future: Add more payment method classes here
-        // require_once GMPAYS_WC_GATEWAY_PLUGIN_PATH . 'includes/class-wc-gateway-gmpays-pix.php';
-        // require_once GMPAYS_WC_GATEWAY_PLUGIN_PATH . 'includes/class-wc-gateway-gmpays-spei.php';
     }
     
     /**
@@ -149,42 +130,7 @@ class GMPaysWooCommerceGateway {
      */
     public function add_gateways($gateways) {
         $gateways[] = 'WC_Gateway_GMPays_Credit_Card';
-        // Future: Add more payment methods
-        // $gateways[] = 'WC_Gateway_GMPays_PIX';
-        // $gateways[] = 'WC_Gateway_GMPays_SPEI';
-        // $gateways[] = 'WC_Gateway_GMPays_PSE';
         return $gateways;
-    }
-    
-    /**
-     * Enqueue frontend scripts
-     */
-    public function enqueue_scripts() {
-        if (is_checkout()) {
-            wp_enqueue_script(
-                'gmpays-checkout',
-                GMPAYS_WC_GATEWAY_PLUGIN_URL . 'assets/js/gmpays-checkout.js',
-                array('jquery'),
-                GMPAYS_WC_GATEWAY_VERSION,
-                true
-            );
-            
-            wp_localize_script('gmpays-checkout', 'gmpays_params', array(
-                'ajax_url' => admin_url('admin-ajax.php'),
-                'nonce' => wp_create_nonce('gmpays_checkout_nonce'),
-            ));
-        }
-    }
-    
-    /**
-     * Register webhook endpoint for GMPays notifications
-     */
-    public function register_webhook_endpoint() {
-        register_rest_route('gmpays/v1', '/webhook', array(
-            'methods' => 'POST',
-            'callback' => array('GMPays_Webhook_Handler', 'handle_webhook'),
-            'permission_callback' => '__return_true',
-        ));
     }
     
     /**
@@ -198,34 +144,6 @@ class GMPaysWooCommerceGateway {
         );
         array_unshift($links, $settings_link);
         return $links;
-    }
-    
-    /**
-     * Display PHP version notice
-     */
-    public function php_version_notice() {
-        echo '<div class="error"><p><strong>' . sprintf(
-            __('GMPays WooCommerce Gateway requires PHP version 7.4 or higher. Your current version is %s.', 'gmpays-woocommerce-gateway'),
-            PHP_VERSION
-        ) . '</strong></p></div>';
-    }
-    
-    /**
-     * Display Composer missing notice
-     */
-    public function composer_missing_notice() {
-        echo '<div class="error"><p><strong>' . 
-            __('GMPays WooCommerce Gateway requires Composer dependencies to be installed. Please run "composer install" in the plugin directory.', 'gmpays-woocommerce-gateway') . 
-        '</strong></p></div>';
-    }
-    
-    /**
-     * Display initialization error notice
-     */
-    public function initialization_error_notice() {
-        echo '<div class="error"><p><strong>' . 
-            __('GMPays WooCommerce Gateway encountered an error during initialization. Please check the error logs for more details.', 'gmpays-woocommerce-gateway') . 
-        '</strong></p></div>';
     }
     
     /**
